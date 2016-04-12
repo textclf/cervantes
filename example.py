@@ -2,7 +2,7 @@ import os
 
 from nlpdatahandlers import YelpDataHandler
 
-from vector_box import GloVeBox
+from box import WordVectorBox
 from language.embeddings import OneLevelEmbedding, TwoLevelsEmbedding
 from nn.models import RNNBinaryClassifier, LanguageClassifier
 
@@ -35,7 +35,7 @@ if __name__ == '__main__':
         # We need a file with precomputed wordvectors
         print 'Building global word vectors from {}'.format(WV_FILE)
 
-        gbox = GloVeBox(WV_FILE)
+        gbox = WordVectorBox(WV_FILE)
         gbox.build(zero_token=True, normalize_variance=False, normalize_norm=True)
 
         # Build the language embedding with the given vector box and 300 words per text
@@ -54,7 +54,7 @@ if __name__ == '__main__':
 
     # We can also specify a custom Keras model expecting indexed texts as seen in the embeddings
     model = Sequential()
-    # TODO: Provide a generic builder of initial layers for embeddings
+    # # TODO: Provide a generic builder of initial layers for embeddings
     model.add(Embedding(gbox.W.shape[0], gbox.W.shape[1], weights=[gbox.W],
                         input_length=train_reviews.shape[1]))
     model.add(GRU(128, return_sequences=True))

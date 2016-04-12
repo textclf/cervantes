@@ -18,13 +18,15 @@ class LanguageClassifier(object):
         self.model = model
         self.type = type
 
-    def train(self, X, y, train_options):
+    def train(self, X, y, model_file=None, train_options=None):
         if self.type == LanguageClassifier.SEQUENTIAL:
-            self.train_sequential(X, y, "TODO", fit_params=train_options)
+            self.train_sequential(X, y, model_file, train_options)
+        else:
+            self.train_functional(X, y, model_file, train_options)
 
-    def train_sequential(self, X, y, model_file, fit_params=None, monitor='val_acc'):
-        # TODO: DOCUMENT once thoroughly tested
+    def train_sequential(self, X, y, model_file=None, fit_params=None):
 
+        # Provide some default values as training options
         if fit_params is None:
             fit_params = {
                 "batch_size": 32,
@@ -32,18 +34,20 @@ class LanguageClassifier(object):
                 "verbose": True,
                 "validation_split": 0.15,
                 "show_accuracy": True,
-                "callbacks": [EarlyStopping(verbose=True, patience=5, monitor=monitor),
-                              ModelCheckpoint(model_file, monitor=monitor, verbose=True, save_best_only=True)]
+                "callbacks": [EarlyStopping(verbose=True, patience=5, monitor='val_acc')]
             }
+            if model_file is not None:
+                fit_params["callbacks"].append(ModelCheckpoint(model_file, monitor='val_acc', verbose=True, save_best_only=True))
+
         print 'Fitting! Hit CTRL-C to stop early...'
 
         try:
-            history = self.model.fit(X, y, **fit_params)
+            self.model.fit(X, y, **fit_params)
         except KeyboardInterrupt:
             print "Training stopped early!"
-            history = self.model.history
 
-        return history
+    def train_functional(self, X, y, model_file=None, fit_params=None):
+        pass
 
     def test_sequential(self, X_test, y_test, saved_model=None):
         # TODO: DOCUMENT
@@ -58,11 +62,12 @@ class LanguageClassifier(object):
         acc = ((yhat.ravel() > 0.5) == (y_test > 0.5)).mean()
 
         print "Test set accuracy of {}%.".format(acc * 100.0)
-        print "Test set error of {}%. Exiting...".format((1 - acc) * 100.0)
+        print "Test set error of {}%.".format((1 - acc) * 100.0)
 
         return acc
 
     def log_results(self):
+        # Use self.model.history
         pass
 
 class RNNBinaryClassifier(LanguageClassifier):
@@ -82,9 +87,14 @@ class RNNBinaryClassifier(LanguageClassifier):
 
         model = Sequential()
         # TODO: add sizes to vector boxes / language embedding classes
-        emb = Embedding(lembedding.vector_box.W.shape[0],
-                        lembedding.vector_box.W.shape[1],
-                        weights=lembedding.vector_box.W, W_constraint=None)
+        if lembedding.vector_box is None:
+            emb = Embedding(lembedding.vector_box.size,
+                            lembedding.vector_box.vector_dim,
+                            W_constraint=None)
+        else:
+            emb = Embedding(lembedding.vector_box.size,
+                            lembedding.vector_box.vector_dim,
+                            weights=lembedding.vector_box.W, W_constraint=None)
         emb.trainable = train_vectors
         model.add(emb)
         if unit == 'gru':

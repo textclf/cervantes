@@ -3,25 +3,6 @@ from tokenizer import EnglishTokenizer
 import sys
 import cPickle as pickle
 
-def normalize(sq, size=30, filler=0, prepend=False):
-    """
-    Take a list of lists and ensure that they are all of length `sz`
-
-    Args:
-    -----
-    e: a non-generator iterable of lists
-    sz: integer, the size that each sublist should be normalized to
-    filler: obj -- what should be added to fill out the size?
-    prepend: should `filler` be added to the front or the back of the list?
-    """
-    if not prepend:
-        def _normalize(e, sz):
-            return e[:sz] if len(e) >= sz else e + [filler] * (sz - len(e))
-    else:
-        def _normalize(e, sz):
-            return e[-sz:] if len(e) >= sz else [filler] * (sz - len(e)) + e
-    return [_normalize(e, size) for e in sq]
-
 class LanguageEmbeddingException(Exception):
     pass
 
@@ -44,8 +25,6 @@ class LanguageEmbedding(object):
         """
         if self.data is None:
             raise LanguageEmbeddingException("No text was treated as embedding input, call compute()")
-        if self.vector_box.W is None:
-            raise LanguageEmbeddingException("Vector box empty")
         pickle.dump(self, open(file, 'wb'), pickle.HIGHEST_PROTOCOL)
 
 class OneLevelEmbedding(LanguageEmbedding):
@@ -59,7 +38,7 @@ class OneLevelEmbedding(LanguageEmbedding):
 
           "Cervantes was born in a beautiful city of Spain"
 
-    which, by using the word vectors representation found in the corresponding vector_box,
+    which, by using the word vectors representation found in the corresponding box,
     will be translated and saved in the language embedding as
 
           [234, 10, 23, 2, 5, 294, 392, 6, 1024]
@@ -89,7 +68,6 @@ class OneLevelEmbedding(LanguageEmbedding):
         else:
             raise LanguageEmbeddingException("Pickle is not of the expected class")
 
-
     def _to_word_level_idx(self, texts, tokenizer=None):
         """
         Receives a list of texts. For each text, it converts the text into indices of a word
@@ -111,13 +89,22 @@ class OneLevelEmbedding(LanguageEmbedding):
                 sys.stdout.flush()
             tokenized_texts.append(tokenizer.tokenize(text))
 
-        text_with_indices = normalize(self.vector_box.get_indices(tokenized_texts), self.size)
-        return text_with_indices
+        texts_with_indices = normalize(self.vector_box.get_indices(tokenized_texts), self.size)
+        return texts_with_indices
 
     def _to_char_level_idx(self, texts):
-        # TODO
-        raise NotImplementedError
+        """
+        TODO
+        """
+        texts_characters = []
+        for (i, text) in enumerate(texts):
+            if self.verbose:
+                sys.stdout.write('Processing text %d out of %d \r' % (i + 1, len(texts)))
+                sys.stdout.flush()
+            texts_characters.append(self.vector_box.get_indices(text))
 
+        texts_characters = normalize(texts_characters, self.size)
+        return texts_characters
 
 class TwoLevelsEmbedding(LanguageEmbedding):
 
@@ -200,3 +187,23 @@ class TwoLevelsEmbedding(LanguageEmbedding):
         else:
             text_with_indices = char_container.get_indices(texts_list)
         return text_with_indices
+
+
+def normalize(sq, size=30, filler=0, prepend=False):
+    """
+    Take a list of lists and ensure that they are all of length `sz`
+
+    Args:
+    -----
+    e: a non-generator iterable of lists
+    sz: integer, the size that each sublist should be normalized to
+    filler: obj -- what should be added to fill out the size?
+    prepend: should `filler` be added to the front or the back of the list?
+    """
+    if not prepend:
+        def _normalize(e, sz):
+            return e[:sz] if len(e) >= sz else e + [filler] * (sz - len(e))
+    else:
+        def _normalize(e, sz):
+            return e[-sz:] if len(e) >= sz else [filler] * (sz - len(e)) + e
+    return [_normalize(e, size) for e in sq]

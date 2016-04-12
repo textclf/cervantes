@@ -1,38 +1,26 @@
-'''
-glove.py -- a wrapper and handler for GloVe vectors from the 
-GloVe package released by the Stanford NLP Group
-'''
-
 import logging
-
 import numpy as np
+try:
+    from sklearn.neighbors import NearestNeighbors
+    SKLEARN = True
+except ImportError:
+    SKLEARN = False
 
+from vbox import VectorBox
 
 LOGGER_PREFIX = ' %s'
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def log(msg):
-    logger.info(LOGGER_PREFIX % msg)
-
-# TODO: Think about removing this since it depends on sklearn
-try:
-    from sklearn.neighbors import NearestNeighbors
-    SKLEARN = True
-except ImportError:
-    log('Error in scikit-learn import. No indexing available.')
-    SKLEARN = False
-
-class GloVeException(Exception):
-    """Errors for GloVeBox"""
+class VectorBoxException(Exception):
+    """ Errors for VectorBox. """
     pass
 
-class GloVeBox(object):
-    '''
+class WordVectorBox(VectorBox):
+    """
+    A container for handling word vectors
 
-    A nice container for handing vocab issues and word vector lookup!
-
-    >>> gb = GloVeBox('./glove.6B.300d.txt')
+    >>> gb = VectorBox('./glove.6B.300d.txt')
     >>> gb.build().index()
     >>> sent = ['my', 'first', 'sentence']
     >>> wv = gb[sent]
@@ -44,10 +32,9 @@ class GloVeBox(object):
     >>> print ix
     [[192, 58, 2422], [37, 14, 192, 126, 2422]]
 
-
-    '''
+    """
     def __init__(self, vector_file=None, verbose=True):
-        super(GloVeBox, self).__init__()
+        super(WordVectorBox, self).__init__()
         self._vector_file = vector_file
         self._verbose = verbose
         self._built = False
@@ -74,18 +61,18 @@ class GloVeBox(object):
         return self
 
     def build(self, zero_token=False, normalize_variance=False, normalize_norm=False):
-        if (self._vector_file is None):
-            raise GloVeException('Need to specify input vector and vocab files before building')
+        if self._vector_file is None:
+            raise VectorBoxException('Need to specify input file before building')
 
         with open(self._vector_file, 'r') as f:
             if self._verbose:
-                log('Loading vectors from {}'.format(self._vector_file))
+                self.log('Loading vectors from {}'.format(self._vector_file))
             vectors = {}
             words = []
             ctr = 0
             for line in f:
                 if ctr % 10000 == 0:
-                    log('Loading word {}'.format(ctr))
+                    self.log('Loading word {}'.format(ctr))
                 line = line.decode('utf-8')
                 vals = line.rstrip().split(' ')
                 if vals[0] != u'<unk>':
@@ -93,14 +80,12 @@ class GloVeBox(object):
                 vectors[vals[0]] = [float(x) for x in vals[1:]]
                 ctr += 1
 
-        log('Building storage structures...')
-        
-        log('Mapping words to indices...')
+        self.log('Mapping words to indices...')
         vocab_size = len(words)
         if not zero_token:
-            trf = lambda x : x
+            trf = lambda x: x
         else:
-            trf = lambda x : x + 1
+            trf = lambda x: x + 1
             vocab_size += 1
 
         self._w2i = {unicode(w): trf(idx) for idx, w in enumerate(words)}
@@ -109,30 +94,21 @@ class GloVeBox(object):
         if zero_token:
             self._w2i.update({'<blank>' : 0})
         
-        log('Mapping indices to words...')
+        self.log('Mapping indices to words...')
         self._i2w = {trf(idx): unicode(w) for idx, w in enumerate(words + ['<unk>'])}
         self._i2w.update({-1 : '<unk>'})
 
         if zero_token:
             self._i2w.update({0 : '<blank>'})
 
-
         vector_dim = len(vectors[self._i2w[1]])
         self.W = np.zeros((vocab_size + 1, vector_dim))
         ctr = 0
 
-        # for word, v in vectors.iteritems():
-        #     if ctr % 10000 == 0:
-        #         log('Loading word vector {}'.format(ctr))
-        #     if word == '<unk>':
-        #         continue
-        #     self.W[self._w2i[word], :] = v
-        #     ctr += 1
-
         vs, ix = [], []
         for word, v in vectors.iteritems():
             if ctr % 10000 == 0:
-                log('Loading word vector {}'.format(ctr))
+                self.log('Loading word vector {}'.format(ctr))
             if word == '<unk>':
                 continue
             vs.append(v)
@@ -145,17 +121,16 @@ class GloVeBox(object):
             self.W[-1, :] = self.W[:-1, :].mean(axis=0)
 
         if normalize_variance:
-            log('Normalizing vectors by variance...')
+            self.log('Normalizing vectors by variance...')
             # normalize each word vector to unit variance
 
             self.W[0, :] += 1
-            W_norm = np.zeros(self.W.shape)
             d = (np.sum(self.W ** 2, 1) ** (0.5))
             W_norm = (self.W.T / d).T
             self.W = W_norm
             self.W[0, :] = 0
         if normalize_norm:
-            log('Normalizing vectors by norm...')
+            self.log('Normalizing vectors by norm...')
             # normalize each word vector to unit variance
             ptr = 0
             if zero_token:
@@ -163,7 +138,7 @@ class GloVeBox(object):
 
             self.W[ptr:] /= np.linalg.norm(self.W[ptr:], axis=1)[:, np.newaxis]
         else:
-            log('No vector normalization performed...')
+            self.log('No vector normalization performed...')
         self.vocab = words
         self._built = True
         return self
@@ -179,7 +154,6 @@ class GloVeBox(object):
             return self._i2w[i]
         except KeyError:
             return '<unk>'
-
 
     def get_indices(self, obj):
         if isinstance(obj, str) or isinstance(obj, unicode):
@@ -199,17 +173,23 @@ class GloVeBox(object):
         elif hasattr(key, '__iter__'):
             return self.W[np.array([self._get_w2i(k) for k in key]), :]
         elif isinstance(key, str):
-            raise GloVeException('Keys must be unicode strings')
+            raise VectorBoxException('Keys must be unicode strings')
 
-    def index(self, n_neighbors=5, metric='cosine'):
+    def log(self, msg):
+        if self._verbose:
+            logger.info(LOGGER_PREFIX % msg)
+
+    def index(self, metric='cosine'):
         alg = 'brute' if (metric == 'cosine') else 'auto'
+        if not SKLEARN:
+            raise VectorBoxException("Needs sklearn to work")
         self._nn = NearestNeighbors(metric=metric, algorithm=alg)
         self._nn.fit(self.W)
         return self
 
     def nearest(self, word):
-        '''
-        Get nearest word! Can be a string or an actual word vector.
+        """
+        Get nearest words. Word can be a string or an actual word vector.
 
         >>> gb.nearest('sushi')
         [('sashimi', 0.2923392388266389),
@@ -224,11 +204,11 @@ class GloVeBox(object):
          ('grandmother', 0.35364849686834177),
          ('daughter', 0.42422056933288177)]
 
-        '''
+        """
         if not SKLEARN:
-            log('[WARNING] call to nearest returning None, sklearn issues present')
+            raise VectorBoxException("Needs sklearn to work")
         if self._nn is None:
-            raise GloVeException('Call to .index() necessary before queries')
+            raise VectorBoxException('Call to .index() necessary before queries')
         if isinstance(word, str) or isinstance(word, unicode):    
             return  [
                         (self.get_words(i), d) 
@@ -249,11 +229,3 @@ class GloVeBox(object):
                             ]
                         ) if self.get_words(i) != word
                     ]
-
-
-
-
-
-
-
-
