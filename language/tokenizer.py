@@ -18,7 +18,7 @@ class EnglishTokenizer(Tokenizer):
         Gets tokens from a text in English
         """
         if not isinstance(text, unicode):
-            text = unicode(text)
+            text = unicode(text, errors='ignore')
 
         tokens = [token.lower_ for token in self.nlp(text)]
         return tokens
@@ -28,7 +28,7 @@ class EnglishTokenizer(Tokenizer):
         Takes a text and returns a list of lists of tokens, where each sublist is a sentence
         """
         if not isinstance(text, unicode):
-            text = unicode(text)
+            text = unicode(text, errors='ignore')
 
         sentences = self.nlp(text).sents
         return [[t.text for t in s] for s in sentences]
