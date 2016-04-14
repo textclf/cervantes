@@ -1,15 +1,17 @@
 from __future__ import print_function
+from time import strftime
+
 from keras.layers.recurrent import GRU, LSTM
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.models import Sequential
 from keras.layers import Embedding
-from keras.layers.core import Dense, Activation, Dropout, Reshape, Flatten
+from keras.layers.core import Dense, Dropout
 import keras.utils.np_utils
 import keras.models
-from time import strftime
 import numpy as np
 
-from language import OneLevelEmbedding, TwoLevelsEmbedding
+from cervantes.language import OneLevelEmbedding, TwoLevelsEmbedding
+
 
 class LanguageClassifierException(Exception):
     pass
@@ -127,10 +129,10 @@ class LanguageClassifier(object):
             prec = np.sum(np.bitwise_and(predictions, y))*1.0/np.sum(predictions)
             recall = np.sum(np.bitwise_and(predictions, y))*1.0/np.sum(y)
             if verbose:
-                print("Test set accuracy of {0:.3f}%.".format(acc * 100.0))
-                print("Test set error of {0:.3f}%.".format((1 - acc) * 100.0))
-                print("Precision for class=1: {0:.3f}.".format(prec))
-                print("Recall for class=1: {0:.3f}.".format(recall))
+                print("Test set accuracy of {0:.3f}%".format(acc * 100.0))
+                print("Test set error of {0:.3f}%".format((1 - acc) * 100.0))
+                print("Precision for class=1: {0:.3f}".format(prec))
+                print("Recall for class=1: {0:.3f}".format(recall))
 
             return (acc, prec, recall)
         else:
@@ -155,14 +157,13 @@ class LanguageClassifier(object):
             results = self.test_sequential(X_test, y_test, verbose=False)
             if self.binary:
                 (acc, prec, recall) = results
-                print("Test set accuracy of {0:.3f}%.".format(acc * 100.0), file=f)
-                print("Test set error of {0:.3f}%.".format((1 - acc) * 100.0), file=f)
-                print("Precision for class=1: {0:.3f}.".format(prec), file=f)
-                print("Recall for class=1: {0:.3f}.".format(recall), file=f)
+                print("Test set accuracy of {0:.3f}%".format(acc * 100.0), file=f)
+                print("Test set error of {0:.3f}%".format((1 - acc) * 100.0), file=f)
+                print("Precision for class=1: {0:.3f}".format(prec), file=f)
+                print("Recall for class=1: {0:.3f}".format(recall), file=f)
             else:
                 pass
                 # TODO: metrics for multiclass problem
-
 
             print("==" * 40, file=f)
             print("Model: ", file=f)

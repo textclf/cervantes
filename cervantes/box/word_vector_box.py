@@ -1,12 +1,14 @@
 import logging
+
 import numpy as np
+
 try:
     from sklearn.neighbors import NearestNeighbors
     SKLEARN = True
 except ImportError:
     SKLEARN = False
 
-from vbox import VectorBox
+from cervantes.box.vbox import VectorBox
 
 LOGGER_PREFIX = ' %s'
 logging.basicConfig(level=logging.INFO)

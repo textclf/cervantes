@@ -1,7 +1,7 @@
-from tokenizer import EnglishTokenizer
-
 import sys
 import cPickle as pickle
+
+from tokenizer import EnglishTokenizer
 
 class LanguageEmbeddingException(Exception):
     pass
@@ -178,7 +178,7 @@ class TwoLevelsEmbedding(LanguageEmbedding):
         called get_indices()
         """
         # TODO
-        from language.language import tokenize_text
+        from cervantes.language import tokenize_text
         texts_list = util.misc.parallel_run(tokenize_text, texts_list)
 
         if words_per_document is not None:

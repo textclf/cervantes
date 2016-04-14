@@ -1,5 +1,7 @@
 import string
-from vbox import VectorBox
+
+from cervantes.box.vbox import VectorBox
+
 
 class CharBox(VectorBox):
     """
