@@ -1,15 +1,11 @@
 import os
+import numpy as np
 
 from nlpdatahandlers import ImdbDataHandler
 
 from box import WordVectorBox
 from language.embeddings import OneLevelEmbedding, TwoLevelsEmbedding
 from nn.models import RNNClassifier, LanguageClassifier
-
-from keras.layers.recurrent import GRU
-from keras.models import Sequential
-from keras.layers import Embedding
-from keras.layers.core import Dense, Activation, Dropout, Flatten
 
 YELP_FUNNY_TRAIN = '../yelp-dataset/TrainSet_funny_75064'
 YELP_FUNNY_DEV = '../yelp-dataset/DevSet_funny_75064'
@@ -57,6 +53,13 @@ if __name__ == '__main__':
     # embedding must be used
     gru = RNNClassifier(lembedding, num_classes=2, unit='gru',
                         rnn_size=16, train_vectors=False)
-    gru.train(X=lembedding.data[:1000], y=train_labels[:1000], model_file="imdb_model")
-    gru.test_sequential(X=lembedding.data[1000:], y=test_labels[:1000])
-    gru.log_results("log.txt")
+    gru.train(X=lembedding.data[:1000], y=train_labels[:1000], save_model_file="imdb_model")
+    #gru.test_sequential(X=lembedding.data[1000:], y=test_labels[:1000])
+    gru.log_results("log.txt", X_test=lembedding.data[:1000], y_test=test_labels[:1000])
+
+
+    #gru = RNNClassifier(lembedding, num_classes=5, unit='gru',
+    #                    rnn_size=16, train_vectors=False)
+    #gru.train(X=lembedding.data[:1000], y=np.random.choice(range(5), 1000), model_file="imdb_model")
+   # gru.test_sequential(X=lembedding.data[1000:], y=np.random.choice(range(5), 1000))
+    #gru.log_results("log.txt", X_test=lembedding.data[:1000], y_test=np.random.choice(range(5), 1000))
