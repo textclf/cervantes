@@ -67,16 +67,16 @@ class LanguageClassifier(object):
         return lc
 
     def train(self, X, y, nb_epoch=20, validation_split=0.15, batch_size=32,
-              save_model_file=None, **kwargs):
+              model_weights_file=None, model_spec_file=None, **kwargs):
         if self.type == LanguageClassifier.SEQUENTIAL:
             self.train_sequential(X, y, nb_epoch, validation_split, batch_size,
-                                  save_model_file, **kwargs)
+                                  model_weights_file, model_spec_file, **kwargs)
         else:
             self.train_functional(X, y, nb_epoch, validation_split, batch_size,
-                                  save_model_file, **kwargs)
+                                  model_weights_file, model_spec_file, **kwargs)
 
     def train_sequential(self, X, y, nb_epoch=20, validation_split=0.15,
-                         batch_size=32, save_model_file=None, **kwargs):
+                         batch_size=32, model_weights_file=None, model_spec_file=None, **kwargs):
 
         # Provide some default values as training options
         fit_params = {
@@ -87,13 +87,14 @@ class LanguageClassifier(object):
             "callbacks": [EarlyStopping(verbose=True, patience=5, monitor='val_acc')]
         }
 
-        # Override any params provided by the user for Keras training
-        fit_params.update(kwargs)
-
         # Add a callback for saving temporal status of the model while training
-        if save_model_file is not None:
-            fit_params["callbacks"].append(ModelCheckpoint(save_model_file, monitor='val_acc',
+        if model_weights_file is not None:
+            fit_params["callbacks"].append(ModelCheckpoint(model_weights_file, monitor='val_acc',
                                                            verbose=True, save_best_only=True))
+
+        # Override any params provided by the user for Keras training. This allows overriding
+        # default Cervantes behavior when training
+        fit_params.update(kwargs)
 
         if max(y) > 1:
             Y = keras.utils.np_utils.to_categorical(y)
@@ -103,12 +104,24 @@ class LanguageClassifier(object):
             self.binary = True
 
         try:
-            print('Fitting! Hit CTRL-C to stop early...')
+            print("Fitting! Hit CTRL-C to stop early...")
             self.ttime_start = strftime("%Y-%m-%d %H:%M:%S")
             self.model.fit(X, Y, **fit_params)
+            print("Training finished")
         except KeyboardInterrupt:
             print("Training stopped early!")
         self.ttime_stop = strftime("%Y-%m-%d %H:%M:%S")
+
+        # If weights file was specified, we load the best model computed up to the moment
+        # (otherwise the last epoch model would still be working)
+        if model_weights_file is not None:
+            print("Loading best model found...")
+            self.model.load_weights(model_weights_file)
+
+        # Save the full model (spec + weights) if all the information was provided
+        if model_weights_file is not None and model_spec_file is not None:
+            print("Saving full model...")
+            self.save_model(model_spec_file, model_weights_file)
 
     def train_functional(self, X, y, model_file=None, fit_params=None):
         pass
@@ -154,6 +167,7 @@ class LanguageClassifier(object):
             print("Started training: " + self.ttime_start, file=f)
             print("Stopped training: " + self.ttime_stop, file=f)
 
+            print("Obtaining test error...")
             results = self.test_sequential(X_test, y_test, verbose=False)
             if self.binary:
                 (acc, prec, recall) = results
