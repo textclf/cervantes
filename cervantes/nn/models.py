@@ -128,7 +128,7 @@ class LanguageClassifier(object):
 
     def predict(self, X):
         predictions = self.model.predict_classes(X, verbose=True, batch_size=32)
-        return np.array([x[0] for x in predictions])
+        return predictions
 
     def test_sequential(self, X, y, verbose=True):
 
@@ -139,6 +139,7 @@ class LanguageClassifier(object):
             raise LanguageClassifierException("Non comparable arrays")
         if self.binary:
             acc = ((predictions == y)*1.0).mean()
+            predictions = [x[0] for x in predictions]  # for booleans operations
             prec = np.sum(np.bitwise_and(predictions, y))*1.0/np.sum(predictions)
             recall = np.sum(np.bitwise_and(predictions, y))*1.0/np.sum(y)
             if verbose:
@@ -149,8 +150,11 @@ class LanguageClassifier(object):
 
             return (acc, prec, recall)
         else:
-            # TODO: Obtain other metrics
-            acc = (predictions == y).mean()
+            # TODO: Obtain more metrics for the multiclass problem
+            acc = ((predictions == y)*1.0).mean()
+            if verbose:
+                print("Test set accuracy of {0:.3f}%".format(acc * 100.0))
+                print("Test set error of {0:.3f}%".format((1 - acc) * 100.0))
             return acc
 
     def log_results(self, logfile, X_test, y_test):
@@ -176,8 +180,9 @@ class LanguageClassifier(object):
                 print("Precision for class=1: {0:.3f}".format(prec), file=f)
                 print("Recall for class=1: {0:.3f}".format(recall), file=f)
             else:
-                pass
-                # TODO: metrics for multiclass problem
+                acc = results
+                print("Test set accuracy of {0:.3f}%".format(acc * 100.0), file=f)
+                print("Test set error of {0:.3f}%".format((1 - acc) * 100.0), file=f)
 
             print("==" * 40, file=f)
             print("Model: ", file=f)
@@ -225,7 +230,7 @@ class RNNClassifier(LanguageClassifier):
             model.compile(loss='binary_crossentropy', optimizer='rmsprop', metrics=["accuracy"])
         else:
             model.add(Dense(num_classes, activation='softmax'))
-            model.compile(loss='categorical_crossentropy', optimizer='rmsprop', metrics=["accuracy"])
+            model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=["accuracy"])
 
         return model
 
