@@ -17,6 +17,7 @@ class LanguageEmbedding(object):
         self.vector_box = vector_box
         self.verbose = verbose
         self.data = None
+        self.labels = None
 
     def save(self, file):
         """
@@ -26,6 +27,13 @@ class LanguageEmbedding(object):
         if self.data is None:
             raise LanguageEmbeddingException("No text was treated as embedding input, call compute()")
         pickle.dump(self, open(file, 'wb'), pickle.HIGHEST_PROTOCOL)
+
+    def set_labels(self, y):
+        """
+        Convenience method to also save the labels corresponding to the data saved
+        in the embedding object
+        """
+        self.labels = y
 
 class OneLevelEmbedding(LanguageEmbedding):
     """
