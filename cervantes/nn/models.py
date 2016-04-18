@@ -128,6 +128,8 @@ class LanguageClassifier(object):
 
     def predict(self, X):
         predictions = self.model.predict_classes(X, verbose=True, batch_size=32)
+        if len(predictions.shape) > 1:
+            return np.array([x[0] for x in predictions])
         return predictions
 
     def test_sequential(self, X, y, verbose=True):
@@ -139,7 +141,6 @@ class LanguageClassifier(object):
             raise LanguageClassifierException("Non comparable arrays")
         if self.binary:
             acc = ((predictions == y)*1.0).mean()
-            predictions = [x[0] for x in predictions]  # for booleans operations
             prec = np.sum(np.bitwise_and(predictions, y))*1.0/np.sum(predictions)
             recall = np.sum(np.bitwise_and(predictions, y))*1.0/np.sum(y)
             if verbose:
