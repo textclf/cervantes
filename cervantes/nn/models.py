@@ -21,13 +21,14 @@ class LanguageClassifier(object):
     SEQUENTIAL = 0
     FUNCTIONAL = 1
 
-    def __init__(self, model, type=SEQUENTIAL):
+    def __init__(self, model, type=SEQUENTIAL, optimizer=None):
         self.model = model
         self.type = type
         self.binary = "unk"  # unknown until training
 
         self.ttime_start = None
-        self.ttime_stop = None  # for training logging purposes
+        self.ttime_stop = None      # for training logging purposes
+        self.optimizer = optimizer  # used for saving / loading models
 
     def save_model(self, model_spec_file, model_weights_file):
         with open(model_spec_file, "w") as f:
@@ -42,6 +43,9 @@ class LanguageClassifier(object):
                 f.write("Type: sequential\n")
             else:
                 f.write("Type: functional\n")
+
+            if self.optimizer is not None:
+                f.write("Optimizer: " + self.optimizer + "\n")
 
         self.model.save_weights(model_weights_file, overwrite=True)
 
@@ -61,7 +65,13 @@ class LanguageClassifier(object):
             else:
                 type = LanguageClassifier.FUNCTIONAL
 
+            optimizer = f.readline().strip().split(" ")[1]
+
         model.load_weights(model_weights_file)
+        if binary:
+            model.compile(loss='binary_crossentropy', optimizer=optimizer, metrics=["accuracy"])
+        else:
+            model.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=["accuracy"])
         lc = LanguageClassifier(model, type)
         lc.binary = binary
         return lc
@@ -197,18 +207,20 @@ class LanguageClassifier(object):
 
 class RNNClassifier(LanguageClassifier):
 
-    def __init__(self, lembedding, num_classes=2, unit='gru', rnn_size=128, train_vectors=True):
+    def __init__(self, lembedding, num_classes=2, unit='gru', rnn_size=128, train_vectors=True,
+                 optimizer=None):
 
         if not isinstance(lembedding, OneLevelEmbedding):
             raise LanguageClassifierException("The model only accepts one-level language embeddings")
         if num_classes < 2:
             raise LanguageClassifierException("Classes must be 2 or more")
 
-        model = self._generate_model(lembedding, num_classes, unit, rnn_size, train_vectors)
-        super(RNNClassifier, self).__init__(model, LanguageClassifier.SEQUENTIAL)
+        self.optimizer = optimizer
+        model = self._generate_model(lembedding, num_classes, unit,
+                                     rnn_size, train_vectors)
+        super(RNNClassifier, self).__init__(model, LanguageClassifier.SEQUENTIAL, self.optimizer)
 
-    @staticmethod
-    def _generate_model(lembedding, num_classes=2, unit='gru', rnn_size=128, train_vectors=True):
+    def _generate_model(self, lembedding, num_classes=2, unit='gru', rnn_size=128, train_vectors=True):
 
         model = Sequential()
         if lembedding.vector_box.W is None:
@@ -228,50 +240,13 @@ class RNNClassifier(LanguageClassifier):
         model.add(Dropout(0.2))
         if num_classes == 2:
             model.add(Dense(1, activation='sigmoid'))
-            model.compile(loss='binary_crossentropy', optimizer='rmsprop', metrics=["accuracy"])
+            if self.optimizer is None:
+                self.optimizer = 'rmsprop'
+            model.compile(loss='binary_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
         else:
+            if self.optimizer is None:
+                self.optimizer = 'adam'
             model.add(Dense(num_classes, activation='softmax'))
-            model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=["accuracy"])
-
-        return model
-
-class RRNNBasicClassifier(LanguageClassifier):
-
-    def __init__(self, lembedding, num_classes=2, rnn='gru', train_vectors=True):
-        if not isinstance(lembedding, TwoLevelsEmbedding):
-            raise LanguageClassifierException("The model only accepts two-levels language embeddings")
-
-        # TODO
-
-    @staticmethod
-    def _generate_model(lembedding, num_classes=2, unit='gru', rnn_size=128, train_vectors=True):
-
-
-        input_shape = lembedding.size_level1 * lembedding.size_level2
-        model = Sequential()
-        if lembedding.vector_box.W is None:
-            emb = Embedding(lembedding.vector_box.size,
-                            lembedding.vector_box.vector_dim,
-                            W_constraint=None)
-        else:
-            emb = Embedding(lembedding.vector_box.size,
-                            lembedding.vector_box.vector_dim,
-                            weights=[lembedding.vector_box.W], W_constraint=None)
-        emb.trainable = train_vectors
-        model.add(emb)
-
-
-
-        if unit == 'gru':
-            model.add(GRU(rnn_size))
-        else:
-            model.add(LSTM(rnn_size))
-        model.add(Dropout(0.2))
-        if num_classes == 2:
-            model.add(Dense(1, activation='sigmoid'))
-            model.compile(loss='binary_crossentropy', optimizer='rmsprop', metrics=["accuracy"])
-        else:
-            model.add(Dense(num_classes, activation='softmax'))
-            model.compile(loss='categorical_crossentropy', optimizer='rmsprop', metrics=["accuracy"])
+            model.compile(loss='categorical_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
 
         return model
