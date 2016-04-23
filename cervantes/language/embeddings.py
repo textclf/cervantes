@@ -126,10 +126,7 @@ class TwoLevelsEmbedding(LanguageEmbedding):
         self.size_level2 = size_level2
 
     def compute(self, texts):
-        if self.type == TwoLevelsEmbedding.CHAR_WORD_EMBEDDING:
-            self.data = self._to_sentence_level_idx(texts)
-        elif self.type == TwoLevelsEmbedding.WORD_PARAGRAPH_EMBEDDING:
-            self.data = self._to_char_level_idx(texts)
+        self.data = self._get_index_repr(self.type, texts)
 
     @staticmethod
     def load(file):
@@ -139,62 +136,40 @@ class TwoLevelsEmbedding(LanguageEmbedding):
         else:
             raise LanguageEmbeddingException("Pickle is not of the expected class")
 
-    def _to_sentence_level_idx(self, texts, tokenizer=None):
-        """
-        Receives a list of texts. For each text, it converts the text into sentences and converts the words into
-        indices of a word vector container (Glove, WordToVec) for later use in the embedding of a neural network.
+    def _get_index_repr(self, level, texts, tokenizer=None):
+        if level not in {TwoLevelsEmbedding.CHAR_WORD_EMBEDDING, 
+                         TwoLevelsEmbedding.WORD_PARAGRAPH_EMBEDDING}:               
+            raise LanguageEmbeddingException(
+                'level must be one of CHAR_WORD_EMBEDDING or WORD_PARAGRAPH_EMBEDDING'
+            )
 
-        Sentences are padded (or reduced) up to words_per_sentence elements.
-        Texts ("paragraphs") are padded (or reduced) up to sentences_per_paragraph
-        If prepend = True, padding is added at the beginning
-
-        Ex: [[This might be cumbersome. Hopefully not.], [Another text]]
-               to
-            [  [[5, 24, 3, 223], [123, 25, 0, 0]]. [[34, 25, 0, 0], [0, 0, 0, 0]  ]
-            using sentences_per_paragraph = 4, words_per_sentence = 4
-
-        # words_per_sentence = size_level1
-        # sentences_per_text = size_level2
-
-        """
         if tokenizer is None:
             if self.verbose:
                 print "Loading tokenizer"
             tokenizer = EnglishTokenizer()
+
+        
+        _tokenizer = lambda t: tokenizer.tokenize(t) \
+                     if level == TwoLevelsEmbedding.CHAR_WORD_EMBEDDING \
+                     else \
+                     lambda t: tokenizer.tokenize_by_sentences(t)
 
         tokenized_texts = []
         for (i, text) in enumerate(texts):
             if self.verbose:
                 sys.stdout.write('Processing text %d out of %d \r' % (i + 1, len(texts)))
                 sys.stdout.flush()
-            tokenized_texts.append(tokenizer.tokenize_by_sentences(text))
+            tokenized_texts.append(_tokenizer(text))
 
-        text_normalized_sentences = [normalize(review, size=self.size_level1)
-                                          for review in self.vector_box.get_indices(tokenized_texts)]
-        text_normalized_total = normalize(text_normalized_sentences, size=self.size_level2, filler=[0] * self.size_level1)
+        text_normalized_sentences = [normalize(txt, size=self.size_level1)
+                                          for txt in self.vector_box.get_indices(tokenized_texts)]
+        text_normalized_total = normalize(
+                sq=text_normalized_sentences, 
+                size=self.size_level2, 
+                filler=[0] * self.size_level1
+            )
 
         return text_normalized_total
-
-    @staticmethod
-    def to_char_level_idx(texts_list, char_container, chars_per_word=None, words_per_document=None, prepend=False):
-        """
-        Receives a list of texts. For each text, it converts the text into a list of indices of a characters
-        for later use in the embedding of a neural network.
-        Texts are padded (or reduced) up to chars_per_word
-
-        char_container is assumed to be a method that converts characters to indices using a method
-        called get_indices()
-        """
-        # TODO
-        from cervantes.language import tokenize_text
-        texts_list = util.misc.parallel_run(tokenize_text, texts_list)
-
-        if words_per_document is not None:
-            text_with_indices = [BaseDataHandler.__normalize(char_container.get_indices(txt), chars_per_word, prepend) for txt in texts_list]
-            text_with_indices = BaseDataHandler.__normalize(text_with_indices, size=words_per_document, filler=[0] * chars_per_word)
-        else:
-            text_with_indices = char_container.get_indices(texts_list)
-        return text_with_indices
 
 
 def normalize(sq, size=30, filler=0, prepend=False):

@@ -113,6 +113,11 @@ class LanguageClassifier(object):
             Y = y
             self.binary = True
 
+        X = np.array(X)
+
+        # if we don't need 3d inputs...
+        if len(self.model.input_shape) == 2:
+            X = X.reshape((X.shape[0], -1))
         try:
             print("Fitting! Hit CTRL-C to stop early...")
             self.ttime_start = strftime("%Y-%m-%d %H:%M:%S")
@@ -133,7 +138,10 @@ class LanguageClassifier(object):
             print("Saving full model...")
             self.save_model(model_spec_file, model_weights_file)
 
-    def train_functional(self, X, y, model_file=None, fit_params=None):
+    def train_functional(self, X, y, nb_epoch=20, validation_split=0.15,
+                         batch_size=32, model_weights_file=None, model_spec_file=None, **kwargs):
+        
+        # TODO 
         pass
 
     def predict(self, X):
