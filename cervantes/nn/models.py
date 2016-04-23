@@ -100,7 +100,7 @@ class LanguageClassifier(object):
         # Add a callback for saving temporal status of the model while training
         if model_weights_file is not None:
             fit_params["callbacks"].append(ModelCheckpoint(model_weights_file, monitor='val_acc',
-                                                           verbose=True, save_best_only=True))
+                                                           verbose=True, save_best_only=False))
 
         # Override any params provided by the user for Keras training. This allows overriding
         # default Cervantes behavior when training
@@ -145,18 +145,25 @@ class LanguageClassifier(object):
         pass
 
     def predict(self, X):
-        predictions = self.model.predict_classes(X, verbose=True, batch_size=32)
+        predictions = self.model.predict(X, verbose=True, batch_size=32)
         if len(predictions.shape) > 1:
-            return np.array([x[0] for x in predictions])
+            predictions = predictions.argmax(axis=-1)
+        else:
+            predictions = predictions > 0.5
         return predictions
 
     def test_sequential(self, X, y, verbose=True):
-
+        X = np.array(X)
+        # if we don't need 3d inputs...
+        if len(self.model.input_shape) == 2:
+            X = X.reshape((X.shape[0], -1))
         if verbose:
             print("Getting predictions on the test set")
         predictions = self.predict(X)
+
         if len(predictions) != len(y):
             raise LanguageClassifierException("Non comparable arrays")
+
         if self.binary:
             acc = ((predictions == y)*1.0).mean()
             prec = np.sum(np.bitwise_and(predictions, y))*1.0/np.sum(predictions)
@@ -208,8 +215,8 @@ class LanguageClassifier(object):
             print(self.model.to_json(), file=f)
             print("==" * 40, file=f)
             print("Training history:", file=f)
-            if self.model.model.history is not None:
-                print_history(self.model.model.history, f)
+            if self.model.history is not None:
+                print_history(self.model.history, f)
             else:
                 print("Training history not available in loaded models", file=f)
 
