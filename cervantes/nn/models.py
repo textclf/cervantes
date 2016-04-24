@@ -85,7 +85,7 @@ class LanguageClassifier(object):
                 Y = keras.utils.np_utils.to_categorical(y)
                 self.binary = False
             else:
-                Y = y
+                Y = np.array(y)
                 self.binary = True
         else:
             raise LanguageClassifierException('Mult-output models are not supported yet')
