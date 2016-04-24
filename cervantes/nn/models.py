@@ -234,7 +234,7 @@ class RNNClassifier(LanguageClassifier):
         self.optimizer = optimizer
         model = self._generate_model(lembedding, num_classes, unit,
                                      rnn_size, train_vectors)
-        super(RNNClassifier, self).__init__(model, LanguageClassifier.SEQUENTIAL, self.optimizer)
+        super(RNNClassifier, self).__init__(model, self.optimizer)
 
     def _generate_model(self, lembedding, num_classes=2, unit='gru', rnn_size=128, train_vectors=True):
 
