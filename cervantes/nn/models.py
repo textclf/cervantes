@@ -122,10 +122,10 @@ class LanguageClassifier(object):
 
     def predict(self, X):
         predictions = self.model.predict(X, verbose=True, batch_size=32)
-        if len(predictions.shape) > 1:
+        if (len(predictions.shape) > 1) and (1 not in predictions.shape):
             predictions = predictions.argmax(axis=-1)
         else:
-            predictions = predictions > 0.5
+            predictions = 1 * (predictions > 0.5).ravel()
         return predictions
 
     def predict_proba(self, X):
