@@ -121,6 +121,13 @@ class LanguageClassifier(object):
             self.save_model(model_spec_file, model_weights_file)
 
     def predict(self, X):
+        if type(self.model.input_shape) is tuple:
+            X = np.array(X)
+            if len(self.model.input_shape) == 2:
+                X = X.reshape((X.shape[0], -1))
+        else:
+            raise LanguageClassifierException('Mult-input models are not supported yet')
+
         predictions = self.model.predict(X, verbose=True, batch_size=32)
         if (len(predictions.shape) > 1) and (1 not in predictions.shape):
             predictions = predictions.argmax(axis=-1)
@@ -129,6 +136,12 @@ class LanguageClassifier(object):
         return predictions
 
     def predict_proba(self, X):
+        if type(self.model.input_shape) is tuple:
+            X = np.array(X)
+            if len(self.model.input_shape) == 2:
+                X = X.reshape((X.shape[0], -1))
+        else:
+            raise LanguageClassifierException('Mult-input models are not supported yet')
         return self.model.predict(X, verbose=True, batch_size=32)
 
     def test(self, X, y, verbose=True):
@@ -198,8 +211,13 @@ class LanguageClassifier(object):
             print(self.model.to_json(), file=f)
             print("==" * 40, file=f)
             print("Training history:", file=f)
-            if self.model.history is not None:
-                print_history(self.model.history, f)
+            hist = self.model.history \
+                   if hasattr(self.model, 'history') \
+                   else \
+                   self.model.model.history
+
+            if hist is not None:
+                print_history(hist, f)
             else:
                 print("Training history not available in loaded models", file=f)
 
