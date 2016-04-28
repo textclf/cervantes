@@ -37,8 +37,6 @@ class CharBox(VectorBox):
 class EnglishCharBox(CharBox):
     """
     Class the maps characters to integer codes
-    NOTE that the number zero is for padding, and thus, is mapped
-    to by no character. The space character is NOT recognized
     Example:
     ---------
     >>> cm = CharMapper()
@@ -49,7 +47,7 @@ class EnglishCharBox(CharBox):
      ['M', 'y', '<unk>', 'c', 'a', 't', '.']]
     """
 
-    ALLOWED_CHARS = [ch for ch in (string.digits + string.letters + string.punctuation + ' ')] + ['<word>', '</word>']
+    ALLOWED_CHARS = [ch for ch in (string.digits + string.lowercase + string.punctuation + ' ')] + ['<word>', '</word>']
 
     def __init__(self, vector_dim):
         self.n_chars = len(self.ALLOWED_CHARS)
@@ -83,7 +81,8 @@ class EnglishCharBox(CharBox):
         if isinstance(o, int):
             return self.i2c(o)
         if isinstance(o, str) or isinstance(o, unicode):
-            return [self._c2i['<word>']] + [self.c2i(ch) for ch in o] + [self._c2i['</word>']]
+            # Word can also distinguish between beginning and end of text. #TODO: Refactor this
+            return [self._c2i['<word>']] + [self.c2i(ch) for ch in o.lower()] + [self._c2i['</word>']]
         if hasattr(o, '__iter__'):
             return [self.__getitem__(so) for so in o]
             
