@@ -70,14 +70,14 @@ class LanguageClassifier(object):
             "callbacks": [EarlyStopping(verbose=True, patience=5, monitor='val_acc')]
         }
 
+        # Override any params provided by the user for Keras training. This allows overriding
+        # default Cervantes behavior when training
+        fit_params.update(kwargs)
+
         # Add a callback for saving temporal status of the model while training
         if model_weights_file is not None:
             fit_params["callbacks"].append(ModelCheckpoint(model_weights_file, monitor='val_acc',
                                                            verbose=True, save_best_only=True))
-
-        # Override any params provided by the user for Keras training. This allows overriding
-        # default Cervantes behavior when training
-        fit_params.update(kwargs)
 
         # in Keras 1.0, a shape of tuple => single in/out model
         if type(self.model.output_shape) is tuple:
