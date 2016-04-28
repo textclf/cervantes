@@ -5,7 +5,8 @@ from keras.layers.recurrent import GRU, LSTM
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.models import Sequential
 from keras.layers import Embedding
-from keras.layers.core import Dense, Dropout
+from keras.layers.core import Dense, Dropout, Flatten, Activation
+from keras.layers.convolutional import Convolution1D, MaxPooling1D
 import keras.utils.np_utils
 import keras.models
 import numpy as np
@@ -18,12 +19,8 @@ class LanguageClassifierException(Exception):
 
 class LanguageClassifier(object):
 
-    SEQUENTIAL = 0
-    FUNCTIONAL = 1
-
-    def __init__(self, model, type=SEQUENTIAL, optimizer=None):
+    def __init__(self, model, optimizer=None):
         self.model = model
-        self.type = type
         self.binary = "unk"  # unknown until training
 
         self.ttime_start = None
@@ -31,62 +28,39 @@ class LanguageClassifier(object):
         self.optimizer = optimizer  # used for saving / loading models
 
     def save_model(self, model_spec_file, model_weights_file):
-        with open(model_spec_file, "w") as f:
-            f.write(self.model.to_json())
-            f.write("\n")
-            if self.binary == "unk":
-                f.write("Binary: unk" + "\n")
-            else:
-                f.write("Binary: " + str(self.binary) + "\n")
+        from json import dump, loads
 
-            if self.type == self.SEQUENTIAL:
-                f.write("Type: sequential\n")
-            else:
-                f.write("Type: functional\n")
-
-            if self.optimizer is not None:
-                f.write("Optimizer: " + self.optimizer + "\n")
+        dump({
+                'model': loads(self.model.to_json()),
+                'binary': self.binary,
+                'optimizer': self.optimizer
+            }, 
+            open(model_spec_file, 'w'))
 
         self.model.save_weights(model_weights_file, overwrite=True)
 
     @staticmethod
     def load_model(model_spec_file, model_weights_file):
-        with open(model_spec_file, "r") as f:
-            model = keras.models.model_from_json(f.readline())
-            binary = f.readline().strip().split(" ")[1]
-            if binary == "True":
-                binary = True
-            elif binary == "False":
-                binary = False
+        from json import dumps, load
 
-            type = f.readline().strip().split(" ")[1]
-            if type == "sequential":
-                type = LanguageClassifier.SEQUENTIAL
-            else:
-                type = LanguageClassifier.FUNCTIONAL
+        params = load(open(model_spec_file, "r"))
 
-            optimizer = f.readline().strip().split(" ")[1]
+        model = keras.models.model_from_json(dumps(params['model']))
+        binary = params['binary']
+        optimizer = params['optimizer']
 
         model.load_weights(model_weights_file)
         if binary:
             model.compile(loss='binary_crossentropy', optimizer=optimizer, metrics=["accuracy"])
         else:
             model.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=["accuracy"])
-        lc = LanguageClassifier(model, type)
+        
+        lc = LanguageClassifier(model)
         lc.binary = binary
         return lc
 
     def train(self, X, y, nb_epoch=20, validation_split=0.15, batch_size=32,
               model_weights_file=None, model_spec_file=None, **kwargs):
-        if self.type == LanguageClassifier.SEQUENTIAL:
-            self.train_sequential(X, y, nb_epoch, validation_split, batch_size,
-                                  model_weights_file, model_spec_file, **kwargs)
-        else:
-            self.train_functional(X, y, nb_epoch, validation_split, batch_size,
-                                  model_weights_file, model_spec_file, **kwargs)
-
-    def train_sequential(self, X, y, nb_epoch=20, validation_split=0.15,
-                         batch_size=32, model_weights_file=None, model_spec_file=None, **kwargs):
 
         # Provide some default values as training options
         fit_params = {
@@ -97,27 +71,36 @@ class LanguageClassifier(object):
             "callbacks": [EarlyStopping(verbose=True, patience=5, monitor='val_acc')]
         }
 
+        # Override any params provided by the user for Keras training. This allows overriding
+        # default Cervantes behavior when training
+        fit_params.update(kwargs)
+
         # Add a callback for saving temporal status of the model while training
         if model_weights_file is not None:
             fit_params["callbacks"].append(ModelCheckpoint(model_weights_file, monitor='val_acc',
                                                            verbose=True, save_best_only=True))
 
-        # Override any params provided by the user for Keras training. This allows overriding
-        # default Cervantes behavior when training
-        fit_params.update(kwargs)
-
-        if max(y) > 1:
-            Y = keras.utils.np_utils.to_categorical(y)
-            self.binary = False
+        # in Keras 1.0, a shape of tuple => single in/out model
+        if type(self.model.output_shape) is tuple:
+            if max(y) > 1:
+                Y = keras.utils.np_utils.to_categorical(y)
+                self.binary = False
+            else:
+                Y = np.array(y)
+                self.binary = True
         else:
-            Y = y
-            self.binary = True
+            raise LanguageClassifierException('Mult-output models are not supported yet')
 
-        X = np.array(X)
-
+        
         # if we don't need 3d inputs...
-        if len(self.model.input_shape) == 2:
-            X = X.reshape((X.shape[0], -1))
+        if type(self.model.input_shape) is tuple:
+            X = np.array(X)
+            if len(self.model.input_shape) == 2:
+                X = X.reshape((X.shape[0], -1))
+        else:
+            raise LanguageClassifierException('Mult-input models are not supported yet')
+        
+
         try:
             print("Fitting! Hit CTRL-C to stop early...")
             self.ttime_start = strftime("%Y-%m-%d %H:%M:%S")
@@ -138,25 +121,39 @@ class LanguageClassifier(object):
             print("Saving full model...")
             self.save_model(model_spec_file, model_weights_file)
 
-    def train_functional(self, X, y, nb_epoch=20, validation_split=0.15,
-                         batch_size=32, model_weights_file=None, model_spec_file=None, **kwargs):
-        
-        # TODO 
-        pass
-
     def predict(self, X):
+        if type(self.model.input_shape) is tuple:
+            X = np.array(X)
+            if len(self.model.input_shape) == 2:
+                X = X.reshape((X.shape[0], -1))
+        else:
+            raise LanguageClassifierException('Mult-input models are not supported yet')
+
         predictions = self.model.predict(X, verbose=True, batch_size=32)
-        if len(predictions.shape) > 1:
+        if (len(predictions.shape) > 1) and (1 not in predictions.shape):
             predictions = predictions.argmax(axis=-1)
         else:
-            predictions = predictions > 0.5
+            predictions = 1 * (predictions > 0.5).ravel()
         return predictions
 
-    def test_sequential(self, X, y, verbose=True):
-        X = np.array(X)
+    def predict_proba(self, X):
+        if type(self.model.input_shape) is tuple:
+            X = np.array(X)
+            if len(self.model.input_shape) == 2:
+                X = X.reshape((X.shape[0], -1))
+        else:
+            raise LanguageClassifierException('Mult-input models are not supported yet')
+        return self.model.predict(X, verbose=True, batch_size=32)
+
+    def test(self, X, y, verbose=True):
         # if we don't need 3d inputs...
-        if len(self.model.input_shape) == 2:
-            X = X.reshape((X.shape[0], -1))
+        if type(self.model.input_shape) is tuple:
+            X = np.array(X)
+            if len(self.model.input_shape) == 2:
+                X = X.reshape((X.shape[0], -1))
+        else:
+            raise LanguageClassifierException('Mult-input models are not supported yet')
+
         if verbose:
             print("Getting predictions on the test set")
         predictions = self.predict(X)
@@ -165,9 +162,9 @@ class LanguageClassifier(object):
             raise LanguageClassifierException("Non comparable arrays")
 
         if self.binary:
-            acc = ((predictions == y)*1.0).mean()
-            prec = np.sum(np.bitwise_and(predictions, y))*1.0/np.sum(predictions)
-            recall = np.sum(np.bitwise_and(predictions, y))*1.0/np.sum(y)
+            acc = (predictions == y).mean()
+            prec = np.sum(np.bitwise_and(predictions, y)) * 1.0 / np.sum(predictions)
+            recall = np.sum(np.bitwise_and(predictions, y)) * 1.0 / np.sum(y)
             if verbose:
                 print("Test set accuracy of {0:.3f}%".format(acc * 100.0))
                 print("Test set error of {0:.3f}%".format((1 - acc) * 100.0))
@@ -177,7 +174,7 @@ class LanguageClassifier(object):
             return (acc, prec, recall)
         else:
             # TODO: Obtain more metrics for the multiclass problem
-            acc = ((predictions == y)*1.0).mean()
+            acc = (predictions == y).mean()
             if verbose:
                 print("Test set accuracy of {0:.3f}%".format(acc * 100.0))
                 print("Test set error of {0:.3f}%".format((1 - acc) * 100.0))
@@ -198,7 +195,7 @@ class LanguageClassifier(object):
             print("Stopped training: " + self.ttime_stop, file=f)
 
             print("Obtaining test error...")
-            results = self.test_sequential(X_test, y_test, verbose=False)
+            results = self.test(X_test, y_test, verbose=False)
             if self.binary:
                 (acc, prec, recall) = results
                 print("Test set accuracy of {0:.3f}%".format(acc * 100.0), file=f)
@@ -215,8 +212,13 @@ class LanguageClassifier(object):
             print(self.model.to_json(), file=f)
             print("==" * 40, file=f)
             print("Training history:", file=f)
-            if self.model.history is not None:
-                print_history(self.model.history, f)
+            hist = self.model.history \
+                   if hasattr(self.model, 'history') \
+                   else \
+                   self.model.model.history
+
+            if hist is not None:
+                print_history(hist, f)
             else:
                 print("Training history not available in loaded models", file=f)
 
@@ -233,7 +235,7 @@ class RNNClassifier(LanguageClassifier):
         self.optimizer = optimizer
         model = self._generate_model(lembedding, num_classes, unit,
                                      rnn_size, train_vectors)
-        super(RNNClassifier, self).__init__(model, LanguageClassifier.SEQUENTIAL, self.optimizer)
+        super(RNNClassifier, self).__init__(model, self.optimizer)
 
     def _generate_model(self, lembedding, num_classes=2, unit='gru', rnn_size=128, train_vectors=True):
 
@@ -253,6 +255,61 @@ class RNNClassifier(LanguageClassifier):
         else:
             model.add(LSTM(rnn_size))
         model.add(Dropout(0.2))
+        if num_classes == 2:
+            model.add(Dense(1, activation='sigmoid'))
+            if self.optimizer is None:
+                self.optimizer = 'rmsprop'
+            model.compile(loss='binary_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
+        else:
+            if self.optimizer is None:
+                self.optimizer = 'adam'
+            model.add(Dense(num_classes, activation='softmax'))
+            model.compile(loss='categorical_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
+
+        return model
+
+class BasicCNNClassifier(LanguageClassifier):
+
+    def __init__(self, lembedding, num_classes=2, num_features=128, train_vectors=True,
+                 optimizer=None):
+
+        if not isinstance(lembedding, OneLevelEmbedding):
+            raise LanguageClassifierException("The model only accepts one-level language embeddings")
+        if num_classes < 2:
+            raise LanguageClassifierException("Classes must be 2 or more")
+
+        self.optimizer = optimizer
+        model = self._generate_model(lembedding, num_classes, num_features, train_vectors)
+        super(BasicCNNClassifier, self).__init__(model, self.optimizer)
+
+    def _generate_model(self, lembedding, num_classes=2, num_features=128, train_vectors=True):
+
+        model = Sequential()
+        if lembedding.vector_box.W is None:
+            emb = Embedding(lembedding.vector_box.size,
+                            lembedding.vector_box.vector_dim,
+                            W_constraint=None,
+                            input_length=lembedding.size)
+        else:
+            emb = Embedding(lembedding.vector_box.size,
+                            lembedding.vector_box.vector_dim,
+                            weights=[lembedding.vector_box.W], W_constraint=None,
+                            input_length=lembedding.size)
+        emb.trainable = train_vectors
+        model.add(emb)
+
+        model.add(Convolution1D(num_features, 3, init='uniform'))
+        model.add(Activation('relu'))
+        model.add(MaxPooling1D(2))
+        model.add(Dropout(0.25))
+
+        model.add(Convolution1D(num_features, 3, init='uniform'))
+        model.add(Activation('relu'))
+        model.add(MaxPooling1D(2))
+        model.add(Dropout(0.25))
+
+        model.add(Flatten())
+
         if num_classes == 2:
             model.add(Dense(1, activation='sigmoid'))
             if self.optimizer is None:
