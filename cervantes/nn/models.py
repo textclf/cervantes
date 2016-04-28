@@ -5,7 +5,8 @@ from keras.layers.recurrent import GRU, LSTM
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.models import Sequential
 from keras.layers import Embedding
-from keras.layers.core import Dense, Dropout
+from keras.layers.core import Dense, Dropout, Flatten, Activation
+from keras.layers.convolutional import Convolution1D, MaxPooling1D
 import keras.utils.np_utils
 import keras.models
 import numpy as np
@@ -254,6 +255,61 @@ class RNNClassifier(LanguageClassifier):
         else:
             model.add(LSTM(rnn_size))
         model.add(Dropout(0.2))
+        if num_classes == 2:
+            model.add(Dense(1, activation='sigmoid'))
+            if self.optimizer is None:
+                self.optimizer = 'rmsprop'
+            model.compile(loss='binary_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
+        else:
+            if self.optimizer is None:
+                self.optimizer = 'adam'
+            model.add(Dense(num_classes, activation='softmax'))
+            model.compile(loss='categorical_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
+
+        return model
+
+class BasicCNNClassifier(LanguageClassifier):
+
+    def __init__(self, lembedding, num_classes=2, num_features=128, train_vectors=True,
+                 optimizer=None):
+
+        if not isinstance(lembedding, OneLevelEmbedding):
+            raise LanguageClassifierException("The model only accepts one-level language embeddings")
+        if num_classes < 2:
+            raise LanguageClassifierException("Classes must be 2 or more")
+
+        self.optimizer = optimizer
+        model = self._generate_model(lembedding, num_classes, num_features, train_vectors)
+        super(BasicCNNClassifier, self).__init__(model, self.optimizer)
+
+    def _generate_model(self, lembedding, num_classes=2, num_features=128, train_vectors=True):
+
+        model = Sequential()
+        if lembedding.vector_box.W is None:
+            emb = Embedding(lembedding.vector_box.size,
+                            lembedding.vector_box.vector_dim,
+                            W_constraint=None,
+                            input_length=lembedding.size)
+        else:
+            emb = Embedding(lembedding.vector_box.size,
+                            lembedding.vector_box.vector_dim,
+                            weights=[lembedding.vector_box.W], W_constraint=None,
+                            input_length=lembedding.size)
+        emb.trainable = train_vectors
+        model.add(emb)
+
+        model.add(Convolution1D(num_features, 3, init='uniform'))
+        model.add(Activation('relu'))
+        model.add(MaxPooling1D(2))
+        model.add(Dropout(0.25))
+
+        model.add(Convolution1D(num_features, 3, init='uniform'))
+        model.add(Activation('relu'))
+        model.add(MaxPooling1D(2))
+        model.add(Dropout(0.25))
+
+        model.add(Flatten())
+
         if num_classes == 2:
             model.add(Dense(1, activation='sigmoid'))
             if self.optimizer is None:
