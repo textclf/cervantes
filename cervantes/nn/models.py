@@ -3,8 +3,8 @@ from time import strftime
 
 from keras.layers.recurrent import GRU, LSTM
 from keras.callbacks import EarlyStopping, ModelCheckpoint
-from keras.models import Sequential
-from keras.layers import Embedding
+from keras.models import Sequential, Model
+from keras.layers import Input, Embedding, merge
 from keras.layers.core import Dense, Dropout, Flatten, Activation
 from keras.layers.convolutional import Convolution1D, MaxPooling1D
 import keras.utils.np_utils
@@ -264,6 +264,57 @@ class RNNClassifier(LanguageClassifier):
             if self.optimizer is None:
                 self.optimizer = 'adam'
             model.add(Dense(num_classes, activation='softmax'))
+            model.compile(loss='categorical_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
+
+        return model
+
+class BiRNNClassifier(LanguageClassifier):
+
+    def __init__(self, lembedding, num_classes=2, unit='gru', rnn_size=128, train_vectors=True,
+                 optimizer=None):
+
+        if not isinstance(lembedding, OneLevelEmbedding):
+            raise LanguageClassifierException("The model only accepts one-level language embeddings")
+        if num_classes < 2:
+            raise LanguageClassifierException("Classes must be 2 or more")
+
+        self.optimizer = optimizer
+        model = self._generate_model(lembedding, num_classes, unit,
+                                     rnn_size, train_vectors)
+        super(BiRNNClassifier, self).__init__(model, self.optimizer)
+
+    def _generate_model(self, lembedding, num_classes=2, unit='gru', rnn_size=128, train_vectors=True):
+
+        input = Input(shape=(lembedding.size,), dtype='int32')
+        if lembedding.vector_box.W is None:
+            emb = Embedding(lembedding.vector_box.size,
+                            lembedding.vector_box.vector_dim,
+                            W_constraint=None)(input)
+        else:
+            emb = Embedding(lembedding.vector_box.size,
+                            lembedding.vector_box.vector_dim,
+                            weights=[lembedding.vector_box.W], W_constraint=None, )(input)
+        emb.trainable = train_vectors
+        if unit == 'gru':
+            forward = GRU(rnn_size)(emb)
+            backward = GRU(rnn_size, go_backwards=True)(emb)
+        else:
+            forward = LSTM(rnn_size)(emb)
+            backward = LSTM(rnn_size, go_backwards=True)(emb)
+
+        merged_rnn = merge([forward, backward], mode='concat')
+        dropped = Dropout(0.5)(merged_rnn)
+        if num_classes == 2:
+            out = Dense(1, activation='sigmoid')(dropped)
+            model = Model(input=input, output=out)
+            if self.optimizer is None:
+                self.optimizer = 'rmsprop'
+            model.compile(loss='binary_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
+        else:
+            out = Dense(num_classes, activation='softmax')(dropped)
+            model = Model(input=input, output=out)
+            if self.optimizer is None:
+                self.optimizer = 'adam'
             model.compile(loss='categorical_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
 
         return model
