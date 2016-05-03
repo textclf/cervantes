@@ -4,9 +4,10 @@ from time import strftime
 from keras.layers.recurrent import GRU, LSTM
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.models import Sequential, Model
-from keras.layers import Input, Embedding, merge
+from keras.layers import Input, Embedding, merge, Lambda
 from keras.layers.core import Dense, Dropout, Flatten, Activation
 from keras.layers.convolutional import Convolution1D, MaxPooling1D
+import keras.backend as K
 import keras.utils.np_utils
 import keras.models
 import numpy as np
@@ -370,6 +371,64 @@ class BasicCNNClassifier(LanguageClassifier):
             if self.optimizer is None:
                 self.optimizer = 'adam'
             model.add(Dense(num_classes, activation='softmax'))
+            model.compile(loss='categorical_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
+
+        return model
+
+class KimCNNClassifier(LanguageClassifier):
+
+    def __init__(self, lembedding, num_classes=2, ngrams=[1,2,3,4,5], nfilters=64, train_vectors=True,
+                 optimizer=None):
+
+        if not isinstance(lembedding, OneLevelEmbedding):
+            raise LanguageClassifierException("The model only accepts one-level language embeddings")
+        if num_classes < 2:
+            raise LanguageClassifierException("Classes must be 2 or more")
+
+        self.optimizer = optimizer
+        model = self._generate_model(lembedding, num_classes, ngrams,
+                                     nfilters, train_vectors)
+        super(KimCNNClassifier, self).__init__(model, self.optimizer)
+
+    def _generate_model(self, lembedding, num_classes=2, ngrams=[1,2,3,4,5],
+                        nfilters=64, train_vectors=True):
+
+        def sub_ngram(n):
+            return Sequential([
+                Convolution1D(nfilters, n,
+                      activation='relu',
+                      input_shape=(lembedding.size, lembedding.vector_box.vector_dim)),
+                Lambda(
+                    lambda x: K.max(x, axis=1),
+                    output_shape=(nfilters,)
+                )
+        ])
+
+        doc = Input(shape=(lembedding.size, ), dtype='int32')
+        embedded = Embedding(input_dim=lembedding.vector_box.size,
+                             output_dim=lembedding.vector_box.vector_dim,
+                             weights=[lembedding.vector_box.W])(doc)
+        embedded.trainable = train_vectors
+
+        rep = Dropout(0.5)(
+            merge(
+                [sub_ngram(n)(embedded) for n in ngrams],
+                mode='concat',
+                concat_axis=-1
+            )
+        )
+
+        if num_classes == 2:
+            out = Dense(1, activation='sigmoid')(rep)
+            model = Model(input=doc, output=out)
+            if self.optimizer is None:
+                self.optimizer = 'rmsprop'
+            model.compile(loss='binary_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
+        else:
+            out = Dense(num_classes, activation='softmax')(rep)
+            model = Model(input=doc, output=out)
+            if self.optimizer is None:
+                self.optimizer = 'adam'
             model.compile(loss='categorical_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
 
         return model
