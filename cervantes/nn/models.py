@@ -92,7 +92,6 @@ class LanguageClassifier(object):
         else:
             raise LanguageClassifierException('Mult-output models are not supported yet')
 
-        
         # if we don't need 3d inputs...
         if type(self.model.input_shape) is tuple:
             X = np.array(X)
@@ -100,7 +99,6 @@ class LanguageClassifier(object):
                 X = X.reshape((X.shape[0], -1))
         else:
             raise LanguageClassifierException('Mult-input models are not supported yet')
-        
 
         try:
             print("Fitting! Hit CTRL-C to stop early...")
@@ -429,6 +427,96 @@ class KimCNNClassifier(LanguageClassifier):
             model = Model(input=doc, output=out)
             if self.optimizer is None:
                 self.optimizer = 'adam'
+            model.compile(loss='categorical_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
+
+        return model
+
+class DeepCNNClassifier(LanguageClassifier):
+
+    def __init__(self, lembedding, num_classes=2, first_kernel_size=3, num_features=1024, train_vectors=True,
+                 optimizer=None, conv_dropout=False):
+        ## Original kernel size: 3 for words, 7 for chars as described in LeCunn
+
+        if not isinstance(lembedding, OneLevelEmbedding):
+            raise LanguageClassifierException("The model only accepts one-level language embeddings")
+        if num_classes < 2:
+            raise LanguageClassifierException("Classes must be 2 or more")
+
+        self.optimizer = optimizer
+        model = self._generate_model(lembedding, num_classes, first_kernel_size,
+                                     num_features, conv_dropout, train_vectors)
+        super(DeepCNNClassifier, self).__init__(model, self.optimizer)
+
+    def _generate_model(self, lembedding, num_classes=2, first_kernel_size=3,
+                        num_features=1024, conv_dropout=False, train_vectors=True):
+
+        model = Sequential()
+        if lembedding.vector_box.W is None:
+            emb = Embedding(lembedding.vector_box.size,
+                            lembedding.vector_box.vector_dim,
+                            W_constraint=None,
+                            input_length=lembedding.size)
+        else:
+            emb = Embedding(lembedding.vector_box.size,
+                            lembedding.vector_box.vector_dim,
+                            weights=[lembedding.vector_box.W], W_constraint=None,
+                            input_length=lembedding.size)
+        emb.trainable = train_vectors
+        model.add(emb)
+
+        # Two conv layers with original kernel size, maxpooling is 2
+        model.add(Convolution1D(num_features, first_kernel_size, init='uniform'))
+        model.add(Activation('relu'))
+        model.add(MaxPooling1D(2))
+        if conv_dropout:
+            model.add(Dropout(0.25))
+
+        model.add(Convolution1D(num_features, first_kernel_size, init='uniform'))
+        model.add(Activation('relu'))
+        model.add(MaxPooling1D(2))
+        if conv_dropout:
+            model.add(Dropout(0.25))
+
+        # Three conv layers with kernel size = 3, no maxpooling
+        model.add(Convolution1D(num_features, 3, init='uniform'))
+        model.add(Activation('relu'))
+        if conv_dropout:
+            model.add(Dropout(0.25))
+
+        model.add(Convolution1D(num_features, 3, init='uniform'))
+        model.add(Activation('relu'))
+        if conv_dropout:
+            model.add(Dropout(0.25))
+
+        model.add(Convolution1D(num_features, 3, init='uniform'))
+        model.add(Activation('relu'))
+        if conv_dropout:
+            model.add(Dropout(0.25))
+
+        # One final conv layer with maxpooling
+        model.add(Convolution1D(num_features, 3, init='uniform'))
+        model.add(Activation('relu'))
+        model.add(MaxPooling1D(2))
+        model.add(Dropout(0.25))
+
+        model.add(Flatten())
+
+        # Two dense layers with heavy dropout
+        model.add(Dense(2048))
+        model.add(Dropout(0.5))
+
+        model.add(Dense(2048))
+        model.add(Dropout(0.5))
+
+        if num_classes == 2:
+            model.add(Dense(1, activation='sigmoid'))
+            if self.optimizer is None:
+                self.optimizer = 'rmsprop'
+            model.compile(loss='binary_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
+        else:
+            if self.optimizer is None:
+                self.optimizer = 'rmsprop'
+            model.add(Dense(num_classes, activation='softmax'))
             model.compile(loss='categorical_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
 
         return model
