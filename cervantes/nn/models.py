@@ -4,7 +4,14 @@ from time import strftime
 from keras.layers.recurrent import GRU, LSTM
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.models import Sequential, Model
-from keras.layers import Input, Embedding, merge, Lambda
+from keras.layers import Input, \
+                         Embedding, \
+                         merge, \
+                         Lambda, \
+                         Reshape, \
+                         Highway, \
+                         TimeDistributed
+
 from keras.layers.core import Dense, Dropout, Flatten, Activation
 from keras.layers.convolutional import Convolution1D, MaxPooling1D
 import keras.backend as K
@@ -519,4 +526,102 @@ class DeepCNNClassifier(LanguageClassifier):
             model.add(Dense(num_classes, activation='softmax'))
             model.compile(loss='categorical_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
 
+        return model
+
+
+
+
+class RCNNClassifier(LanguageClassifier):
+
+    def __init__(self, lembedding, num_classes=2, ngrams=[1, 2, 3, 4, 5],
+                 nfilters=64, rnn_type=GRU, rnn_dim=80, train_vectors=True,
+                 optimizer=None):
+
+        if not isinstance(lembedding, TwoLevelsEmbedding):
+            raise LanguageClassifierException(
+                "The model only accepts two-level language embeddings")
+        if num_classes < 2:
+            raise LanguageClassifierException("Classes must be 2 or more")
+
+        self.optimizer = optimizer
+        model = self._generate_model(lembedding, num_classes, ngrams,
+                                     nfilters, rnn_type, rnn_dim, train_vectors)
+        super(RCNNClassifier, self).__init__(model, self.optimizer)
+
+    def _generate_model(self, lembedding, num_classes=2, ngrams=[1,2,3,4,5],
+                        nfilters=64, rnn_type=GRU, rnn_dim=80, train_vectors=True):
+
+        CHARACTERS_PER_WORD = lembedding.size_level1
+        WORDS_PER_DOCUMENT = lembedding.size_level2
+        EMBEDDING_DIM = lembedding.vector_box.vector_dim
+
+        INPUT_SHAPE = (CHARACTERS_PER_WORD * WORDS_PER_DOCUMENT, )
+        EMBEDDING_SHAPE = (WORDS_PER_DOCUMENT, CHARACTERS_PER_WORD, EMBEDDING_DIM)
+
+        doc = Input(shape=(INPUT_SHAPE[0], ), dtype='int32')
+
+        embedded = Sequential([
+                Embedding(
+                    input_dim=lembedding.vector_box.size, 
+                    output_dim=EMBEDDING_DIM, 
+                    input_length=INPUT_SHAPE[0]
+                    ), 
+                Reshape(EMBEDDING_SHAPE)
+            ])(doc)
+
+        def sub_model(n):
+            return Sequential([
+                    Convolution1D(nfilters, n, 
+                        activation='relu', 
+                        input_shape=EMBEDDING_SHAPE[1:]
+                        ), 
+                    Lambda(
+                        lambda x: K.max(x, axis=1), 
+                        output_shape=(nfilters,)
+                        )
+                ])
+
+
+        rep = Dropout(0.5)(
+            merge(
+                [TimeDistributed(sub_model(n))(embedded) for n in ngrams], 
+                mode='concat', 
+                concat_axis=-1
+            )
+        )
+
+
+        out = Dropout(0.5)(
+            merge(
+                [rnn_type(rnn_dim)(rep), rnn_type(rnn_dim, go_backwards=True)(rep)], 
+                mode='concat', 
+                concat_axis=-1
+            )
+        )
+
+        mapping = [
+                Highway(activation='relu'),
+                Dropout(0.5),
+                Dense(64, activation='relu'),
+                Dropout(0.4)
+            ]
+
+        for f in mapping:
+            out = f(out)
+
+        
+
+        if num_classes == 2:
+            out = Dense(1, activation='sigmoid')(out)
+            model = Model(input=doc, output=out)
+            if self.optimizer is None:
+                self.optimizer = 'rmsprop'
+            model.compile(loss='binary_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
+        else:
+            out = Dense(num_classes, activation='softmax')(out)
+            model = Model(input=doc, output=out)
+            if self.optimizer is None:
+                self.optimizer = 'adam'
+            model.compile(loss='categorical_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
+        
         return model
