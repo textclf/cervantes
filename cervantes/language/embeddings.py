@@ -126,7 +126,10 @@ class TwoLevelsEmbedding(LanguageEmbedding):
         self.size_level2 = size_level2
 
     def compute(self, texts):
-        self.data = self._get_index_repr(self.type, texts)
+        if self.type == self.WORD_PARAGRAPH_EMBEDDING:
+            self.data = self._to_sentence_level_idx(texts)
+        else:
+            self.data = self._get_index_repr(self.type, texts)
 
     @staticmethod
     def load(file):
@@ -135,6 +138,38 @@ class TwoLevelsEmbedding(LanguageEmbedding):
             return obj
         else:
             raise LanguageEmbeddingException("Pickle is not of the expected class")
+
+    def _to_sentence_level_idx(self, texts, tokenizer=None):
+        """
+        Receives a list of texts. For each text, it converts the text into sentences and converts the words into
+        indices of a word vector container (Glove, WordToVec) for later use in the embedding of a neural network.
+        Sentences are padded (or reduced) up to words_per_sentence elements.
+        Texts ("paragraphs") are padded (or reduced) up to sentences_per_paragraph
+        If prepend = True, padding is added at the beginning
+        Ex: [[This might be cumbersome. Hopefully not.], [Another text]]
+               to
+            [  [[5, 24, 3, 223], [123, 25, 0, 0]]. [[34, 25, 0, 0], [0, 0, 0, 0]  ]
+            using sentences_per_paragraph = 4, words_per_sentence = 4
+        # words_per_sentence = size_level1
+        # sentences_per_text = size_level2
+        """
+        if tokenizer is None:
+            if self.verbose:
+                print "Loading tokenizer"
+            tokenizer = EnglishTokenizer()
+
+        tokenized_texts = []
+        for (i, text) in enumerate(texts):
+            if self.verbose:
+                sys.stdout.write('Processing text %d out of %d \r' % (i + 1, len(texts)))
+                sys.stdout.flush()
+            tokenized_texts.append(tokenizer.tokenize_by_sentences(text))
+
+        text_normalized_sentences = [normalize(text, size=self.size_level2)
+                                          for text in self.vector_box.get_indices(tokenized_texts)]
+        text_normalized_total = normalize(text_normalized_sentences, size=self.size_level1, filler=[0] * self.size_level2)
+
+        return text_normalized_total
 
     def _get_index_repr(self, level, texts, tokenizer=None):
         if level not in {TwoLevelsEmbedding.CHAR_WORD_EMBEDDING, 
@@ -147,7 +182,6 @@ class TwoLevelsEmbedding(LanguageEmbedding):
             if self.verbose:
                 print "Loading tokenizer"
             tokenizer = EnglishTokenizer()
-
         
         _tokenizer = lambda t: tokenizer.tokenize(t) \
                      if level == TwoLevelsEmbedding.CHAR_WORD_EMBEDDING \
