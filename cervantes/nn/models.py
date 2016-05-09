@@ -529,8 +529,6 @@ class DeepCNNClassifier(LanguageClassifier):
         return model
 
 
-
-
 class RCNNClassifier(LanguageClassifier):
 
     def __init__(self, lembedding, num_classes=2, ngrams=[1, 2, 3, 4, 5],
@@ -581,7 +579,6 @@ class RCNNClassifier(LanguageClassifier):
                         )
                 ])
 
-
         rep = Dropout(0.5)(
             merge(
                 [TimeDistributed(sub_model(n))(embedded) for n in ngrams], 
@@ -589,7 +586,6 @@ class RCNNClassifier(LanguageClassifier):
                 concat_axis=-1
             )
         )
-
 
         out = Dropout(0.5)(
             merge(
@@ -609,8 +605,6 @@ class RCNNClassifier(LanguageClassifier):
         for f in mapping:
             out = f(out)
 
-        
-
         if num_classes == 2:
             out = Dense(1, activation='sigmoid')(out)
             model = Model(input=doc, output=out)
@@ -624,4 +618,66 @@ class RCNNClassifier(LanguageClassifier):
                 self.optimizer = 'adam'
             model.compile(loss='categorical_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
         
+        return model
+
+
+class RRNNClassifier(LanguageClassifier):
+
+    def __init__(self, lembedding, num_classes=2, rnn_dim=32, optimizer=None):
+
+        if not isinstance(lembedding, TwoLevelsEmbedding):
+            raise LanguageClassifierException(
+                "The model only accepts two-level language embeddings")
+        if num_classes < 2:
+            raise LanguageClassifierException("Classes must be 2 or more")
+
+        self.optimizer = optimizer
+        model = self._generate_model(lembedding, num_classes, rnn_dim)
+        super(RRNNClassifier, self).__init__(model, self.optimizer)
+
+    def _generate_model(self, lembedding, num_classes=2, rnn_dim=32):
+
+        WORD_PER_SENTENCES = lembedding.size_level1
+        SENTENCES_PER_DOCUMENT = lembedding.size_level2
+        EMBEDDING_DIM = lembedding.vector_box.vector_dim
+
+        INPUT_SHAPE = (WORD_PER_SENTENCES * SENTENCES_PER_DOCUMENT, )
+        EMBEDDING_SHAPE = (SENTENCES_PER_DOCUMENT, WORD_PER_SENTENCES, EMBEDDING_DIM)
+
+        doc = Input(shape=(INPUT_SHAPE[0], ), dtype='int32')
+
+        embedded = Sequential([
+            Embedding(
+                input_dim=lembedding.vector_box.size,
+                output_dim=EMBEDDING_DIM,
+                input_length=INPUT_SHAPE[0]
+            ),
+            Reshape(EMBEDDING_SHAPE)
+        ])(doc)
+
+        out = TimeDistributed(GRU(rnn_dim))(embedded)
+        next = Dropout(0.5)(out)
+        out = GRU(rnn_dim)(next)
+        out = Dropout(0.5)(out)
+
+        mapping = [
+            Dense(64, activation='relu'),  # Maybe add more layers
+        ]
+
+        for f in mapping:
+            out = f(out)
+
+        if num_classes == 2:
+            out = Dense(1, activation='sigmoid')(out)
+            model = Model(input=doc, output=out)
+            if self.optimizer is None:
+                self.optimizer = 'rmsprop'
+            model.compile(loss='binary_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
+        else:
+            out = Dense(num_classes, activation='softmax')(out)
+            model = Model(input=doc, output=out)
+            if self.optimizer is None:
+                self.optimizer = 'adam'
+            model.compile(loss='categorical_crossentropy', optimizer=self.optimizer, metrics=["accuracy"])
+
         return model
