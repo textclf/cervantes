@@ -8,8 +8,8 @@ class VectorBox(object):
     The box has a size (number of elements) and a vector dimension.
     The box will actually contain the vectors in a matrix W (number of elements x vector dim)
     or will implicitly be defined by the number of elements and the vector dimension
-    (useful if you don't need to specify an initial distribution of vectors, for instance
-     for character vectors, which are usually computed via the neural network model).
+    (this is useful if you don't need to initial values for vectors, for instance
+    for character vector models, which are usually computed via the neural network model).
     """
 
     def __init__(self):
@@ -27,7 +27,7 @@ class VectorBox(object):
     @size.setter
     def size(self, val):
         if self.W is not None:
-            raise VectorBoxException("Size is controlled by W")
+            raise VectorBoxException("Size is currently controlled by the shape of W")
         else:
             self.num_elems = val
 
@@ -41,7 +41,7 @@ class VectorBox(object):
     @vector_dim.setter
     def vector_dim(self, val):
         if self.W is not None:
-            raise VectorBoxException("Vector dimension is controlled by W")
+            raise VectorBoxException("Vector dimension is currently controlled by the shape of W")
         else:
             self.vdim = val
 

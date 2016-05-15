@@ -1,7 +1,5 @@
 import logging
-
 import numpy as np
-
 try:
     from sklearn.neighbors import NearestNeighbors
     SKLEARN = True
@@ -14,16 +12,29 @@ LOGGER_PREFIX = ' %s'
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class VectorBoxException(Exception):
+class WordVectorBoxException(Exception):
     """ Errors for VectorBox. """
     pass
 
 class WordVectorBox(VectorBox):
     """
-    A container for handling word vectors
+    A container for handling word vectors. The class implicitly defines a
+    relation word to vector by uniquely identifying each word with an index number.
+
+    Input files must be given in the original text format used by word2vec:
+    word1, 0.134 0.256 0.123 ... -0.125
+    word2, 0.139 0.252 0.542 ... -0.125
+    ...
+
+    We recommend using precomputed Glove vectors, such as the ones found in
+    http://nlp.stanford.edu/projects/glove/. For specific datasets, word vectors
+    can be computed and saved using tools such as gensim.
+
+    Once the box is created, we have to build the double index word -> index (vector)
+    and index -> word by calling build(). Additional normalization can be performed here.
 
     >>> gb = VectorBox('./glove.6B.300d.txt')
-    >>> gb.build().index()
+    >>> gb.build()
     >>> sent = ['my', 'first', 'sentence']
     >>> wv = gb[sent]
     >>> print wv.shape
@@ -33,8 +44,8 @@ class WordVectorBox(VectorBox):
     >>> ix = gb.get_indices(sent)
     >>> print ix
     [[192, 58, 2422], [37, 14, 192, 126, 2422]]
-
     """
+
     def __init__(self, vector_file=None, verbose=True):
         super(WordVectorBox, self).__init__()
         self._vector_file = vector_file
@@ -64,7 +75,7 @@ class WordVectorBox(VectorBox):
 
     def build(self, zero_token=False, normalize_variance=False, normalize_norm=False):
         if self._vector_file is None:
-            raise VectorBoxException('Need to specify input file before building')
+            raise WordVectorBoxException('Need to specify input file before building')
 
         with open(self._vector_file, 'r') as f:
             if self._verbose:
@@ -175,7 +186,7 @@ class WordVectorBox(VectorBox):
         elif hasattr(key, '__iter__'):
             return self.W[np.array([self._get_w2i(k) for k in key]), :]
         elif isinstance(key, str):
-            raise VectorBoxException('Keys must be unicode strings')
+            raise WordVectorBoxException('Keys must be unicode strings')
 
     def log(self, msg):
         if self._verbose:
@@ -184,7 +195,7 @@ class WordVectorBox(VectorBox):
     def index(self, metric='cosine'):
         alg = 'brute' if (metric == 'cosine') else 'auto'
         if not SKLEARN:
-            raise VectorBoxException("Needs sklearn to work")
+            raise WordVectorBoxException("Needs sklearn to work")
         self._nn = NearestNeighbors(metric=metric, algorithm=alg)
         self._nn.fit(self.W)
         return self
@@ -208,11 +219,11 @@ class WordVectorBox(VectorBox):
 
         """
         if not SKLEARN:
-            raise VectorBoxException("Needs sklearn to work")
+            raise WordVectorBoxException("Needs sklearn to work")
         if self._nn is None:
-            raise VectorBoxException('Call to .index() necessary before queries')
+            raise WordVectorBoxException('Call to .index() necessary before queries')
         if isinstance(word, str) or isinstance(word, unicode):    
-            return  [
+            return [
                         (self.get_words(i), d) 
                         for d, i in zip(*
                             [
@@ -221,13 +232,13 @@ class WordVectorBox(VectorBox):
                                 )
                             ]
                         ) if self.get_words(i) != word
-                    ]
+                   ]
         else:
-            return  [
+            return [
                         (self.get_words(i), d) 
                         for d, i in zip(*
                             [
                                 a.tolist()[0] for a in self._nn.kneighbors(word)
                             ]
                         ) if self.get_words(i) != word
-                    ]
+                   ]

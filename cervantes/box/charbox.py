@@ -2,10 +2,11 @@ import string
 
 from cervantes.box.vbox import VectorBox
 
-
 class CharBox(VectorBox):
     """
     Generic class for mapping characters to indexes for character embeddings.
+    The class implicitly defines a relation character to vector in a embedding
+    by uniquely identifying each character with an index number.
 
     Subclasses can treat different languages and sets of characters.
     """
@@ -27,30 +28,38 @@ class CharBox(VectorBox):
         """ Character to index. """
         raise NotImplementedError()
 
-    def __getitem__(self, o):
+    def __getitem__(self, obj):
         """ Easy general access, o can be index or string"""
         raise NotImplementedError()
 
-    def get_indices(self, o):
-        return self.__getitem__(o)
+    def get_indices(self, obj):
+        return self.__getitem__(obj)
 
 class EnglishCharBox(CharBox):
     """
-    Class the maps characters to integer codes
+    Specific CharBox for standard English characters and punctuation with no upper-case
+    and lower-case distinction
+
+    The argument mark_limits specifies whether or not special tokens should be added
+    to indicate beginning and end of block. Main use of this is to explicitly indicate
+    beginning and end of words.
+
     Example:
     ---------
-    >>> cm = CharMapper()
+    >>> cm = EnglishCharBox(25, mark_limits=True)
     >>> cm[['My dog.', 'My cat.']]
-    [[23, 61, 95, 40, 51, 43, 76], [23, 61, 95, 39, 37, 56, 76]]
+    [[70, 23, 35, 69, 14, 25, 17, 50, 71], [70, 23, 35, 69, 13, 11, 30, 50, 71]]
     >>> cm[cm[['My dog.', 'My cat.']]]
-    [['M', 'y', '<unk>', 'd', 'o', 'g', '.'], 
-     ['M', 'y', '<unk>', 'c', 'a', 't', '.']]
+    [['<block>', 'm', 'y', ' ', 'd', 'o', 'g', '.', '</block>'],
+     ['<block>', 'm', 'y', ' ', 'c', 'a', 't', '.', '</block>']]
     """
 
-    ALLOWED_CHARS = [ch for ch in (string.digits + string.lowercase + string.punctuation + ' ')] + ['<word>', '</word>']
+    ALLOWED_CHARS = [ch for ch in (string.digits + string.lowercase + string.punctuation + ' ')] +\
+                    ['<block>', '</block>']
 
-    def __init__(self, vector_dim):
+    def __init__(self, vector_dim, mark_limits=True):
         self.n_chars = len(self.ALLOWED_CHARS)
+        self.mark_limits = mark_limits
 
         self._c2i = {ch: (i + 1) for i, ch in enumerate(self.ALLOWED_CHARS)}
         self._c2i['<unk>'] = self.n_chars + 1
@@ -62,7 +71,6 @@ class EnglishCharBox(CharBox):
         super(EnglishCharBox, self).__init__(vector_dim)
 
     def _set_size(self):
-        # TODO: Check carefully
         self.size = len(self._i2c)
 
     def i2c(self, i):
@@ -77,14 +85,16 @@ class EnglishCharBox(CharBox):
         except KeyError:
             return self.n_chars + 1
 
-    def __getitem__(self, o):
-        if isinstance(o, int):
-            return self.i2c(o)
-        if isinstance(o, str) or isinstance(o, unicode):
-            # Word can also distinguish between beginning and end of text. #TODO: Refactor this
-            return [self._c2i['<word>']] + [self.c2i(ch) for ch in o.lower()] + [self._c2i['</word>']]
-        if hasattr(o, '__iter__'):
-            return [self.__getitem__(so) for so in o]
+    def __getitem__(self, obj):
+        if isinstance(obj, int):
+            return self.i2c(obj)
+        if isinstance(obj, str) or isinstance(obj, unicode):
+            if self.mark_limits:
+                return [self._c2i['<block>']] + [self.c2i(ch) for ch in obj.lower()] + [self._c2i['</block>']]
+            else:
+                return [self.c2i(ch) for ch in obj.lower()]
+        if hasattr(obj, '__iter__'):
+            return [self.__getitem__(so) for so in obj]
             
-    def get_indices(self, o):
-        return self.__getitem__(o)
+    def get_indices(self, obj):
+        return self.__getitem__(obj)
