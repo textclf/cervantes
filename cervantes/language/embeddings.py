@@ -2,18 +2,33 @@ import sys
 import cPickle as pickle
 
 from tokenizer import EnglishTokenizer
+from cervantes.box import VectorBox, WordVectorBox, CharBox
 
 class LanguageEmbeddingException(Exception):
     pass
 
 class LanguageEmbedding(object):
     """
-    General class for a language embedding. It contains a vector box which will
-    give the first level vectors of the embedding, which could be words vectors
-    or character vectors.
+    General class for a language embedding. Language embeddings are objects that
+    translate text into vector inputs and have functionality to save and load these
+    representations. The values computed can then be used as the input of a neural network.
+
+    A language embedding contains a vector box which holds the translation of text into
+    a vector representation given by unique biyections token <-> vector index. Hence,
+    when creating a language embedding it is necessary to break down the text into tokens
+    (words, characters, etc) and then provide a one to one mapping into vector indexes.
+
+    Parameters
+    ----------
+    vector_box : vector box object
+    verbose: boolean
+        if True, information about the computations performed by the LanguageEmbedding
+        will be shown
     """
 
     def __init__(self, vector_box, verbose=True):
+        if not isinstance(vector_box, VectorBox):
+            raise LanguageEmbeddingException("vector_box must be of class VectorBox")
         self.vector_box = vector_box
         self.verbose = verbose
         self.data = None
@@ -22,7 +37,7 @@ class LanguageEmbedding(object):
     def save(self, file):
         """
         Saves the object, containing the precomputed text indexed data and
-        initial vectors in the vector-box
+        initial vectors in the vector-box.
         """
         if self.data is None:
             raise LanguageEmbeddingException("No text was treated as embedding input, call compute()")
@@ -31,13 +46,13 @@ class LanguageEmbedding(object):
     def set_labels(self, y):
         """
         Convenience method to also save the labels corresponding to the data saved
-        in the embedding object
+        in the embedding object.
         """
         self.labels = y
 
 class OneLevelEmbedding(LanguageEmbedding):
     """
-    Language embedding consisting of a representation in one level. This is,
+    Language embedding consisting of a language representation in one level. This is,
     text will be represented as a sequence of tokens (which normally will be words
     or characters) together with a vector box encapsulating the vector representation
     of those tokens.
@@ -52,21 +67,25 @@ class OneLevelEmbedding(LanguageEmbedding):
           [234, 10, 23, 2, 5, 294, 392, 6, 1024]
 
     and hence ready as input for a model accepting word embeddings.
+
+    Parameters
+    ----------
+    vector_box : vector box object
+        must hold the translation token <-> vector index. Note that in some cases this
+        means that the vector_box has to be built beforehand.
+    size: int
+        predefined size for each text representation. For the moment, model inputs
+        must be of constant size (for instance, 100 words or 200 characters). If the original
+        text is smaller than the size, the data is zero-padded. If it is bigger, last
+        elements are ignored.
+    verbose: boolean
+        if True, information about the computations performed by the LanguageEmbedding
+        will be shown
     """
 
-    CHAR_EMBEDDING = 1
-    WORD_EMBEDDING = 2
-
-    def __init__(self, vector_box, size, type=WORD_EMBEDDING, verbose=True):
+    def __init__(self, vector_box, size, verbose=True):
         super(OneLevelEmbedding, self).__init__(vector_box, verbose)
-        self.type = type
         self.size = size
-
-    def compute(self, texts):
-        if self.type == OneLevelEmbedding.WORD_EMBEDDING:
-            self.data = self._to_word_level_idx(texts)
-        elif self.type == OneLevelEmbedding.CHAR_EMBEDDING:
-            self.data = self._to_char_level_idx(texts)
 
     @staticmethod
     def load(file):
@@ -76,43 +95,61 @@ class OneLevelEmbedding(LanguageEmbedding):
         else:
             raise LanguageEmbeddingException("Pickle is not of the expected class")
 
-    def _to_word_level_idx(self, texts, tokenizer=None):
+    def compute_index_repr(self, texts, tokenizer=None):
         """
-        Receives a list of texts. For each text, it converts the text into indices of a word
-        vector container (Glove, WordToVec) for later use in the embedding of a neural network.
+        Converts texts to index representation. The computation process is as follows:
+            1st => tokenize the text in tokens as specified in a tokenizer object (if tokenizer
+                   is none, the method assumes that no tokenization has to be done).
+            2nd => for each token, obtain the corresponding vector index via a vector_box
+
         Texts are padded (or reduced) up to the number of words per text given by the size attribute
 
-        The method accepts a user-specific tokenizer to break texts into tokens. If not specified,
-        a default English tokenizer is used
+        Parameters
+        ----------
+        texts: list of texts to compute
+        tokenizer: object of class tokenizer that breaks texts into tokens. If none, the text
+               is not tokenized (useful for character embeddings, since texts are trivially
+               tokenized into characters)
         """
-        if tokenizer is None:
-            if self.verbose:
-                print "Loading tokenizer"
-            tokenizer = EnglishTokenizer()
-
         tokenized_texts = []
         for (i, text) in enumerate(texts):
             if self.verbose:
                 sys.stdout.write('Processing text %d out of %d \r' % (i + 1, len(texts)))
                 sys.stdout.flush()
-            tokenized_texts.append(tokenizer.tokenize(text))
+            if tokenizer is not None:
+                tokenization = tokenizer.tokenize(text)
+                tokenized_texts.append(self.vector_box.get_indices(tokenization))
+            else:
+                tokenized_texts.append(self.vector_box.get_indices(text))
+        if self.verbose:
+            "Finished processing texts"
 
-        texts_with_indices = normalize(self.vector_box.get_indices(tokenized_texts), self.size)
-        return texts_with_indices
+        self.data = normalize(tokenized_texts, self.size)
 
-    def _to_char_level_idx(self, texts):
+    def compute_word_repr(self, texts, tokenizer=None):
         """
-        TODO
+        Convenience method for computing word level embeddings.
+
+        The default tokenizer is the EnglishTokenizer object.
         """
-        texts_characters = []
-        for (i, text) in enumerate(texts):
+        if not isinstance(self.vector_box, WordVectorBox):
+            raise LanguageEmbeddingException("Vector box should be of class WordVectorBox")
+        if self.vector_box.W is None:
+            raise LanguageEmbeddingException("Word vector box must be built() before")
+
+        if tokenizer is None:
             if self.verbose:
-                sys.stdout.write('Processing text %d out of %d \r' % (i + 1, len(texts)))
-                sys.stdout.flush()
-            texts_characters.append(self.vector_box.get_indices(text))
+                print "Loading tokenizer"
+            tokenizer = EnglishTokenizer()
+        self.compute_index_repr(texts, tokenizer)
 
-        texts_characters = normalize(texts_characters, self.size)
-        return texts_characters
+    def compute_char_repr(self, texts):
+        """
+        Convenience method for computing char level embeddings
+        """
+        if not isinstance(self.vector_box, CharBox):
+            raise LanguageEmbeddingException("Vector box should be of class CharBox")
+        self.compute_index_repr(self, texts)
 
 class TwoLevelsEmbedding(LanguageEmbedding):
 
