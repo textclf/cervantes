@@ -36,6 +36,7 @@ class EnglishTokenizer(Tokenizer):
 
         sentences = self.nlp(text).sents
         return [[t.text for t in s] for s in sentences]
+    ## TODO: Watch out for lower case
 
 class FastTokenizer(Tokenizer):
     """
@@ -57,4 +58,5 @@ class FastTokenizer(Tokenizer):
         if not isinstance(text, unicode):
             text = unicode(text, errors='ignore')
 
-        return self.tokenizer.findall(text)
+        words = self.tokenizer.findall(text)
+        return [word.lower() for word in words]
