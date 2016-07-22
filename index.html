@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <link href='https://fonts.googleapis.com/css?family=Architects+Daughter' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/github-light.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print">
+
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+
+    <title>Cervantes by textclf</title>
+  </head>
+
+  <body>
+    <header>
+      <div class="inner">
+        <h1>Cervantes</h1>
+        <h2>A deep learning text classification library over Keras</h2>
+        <a href="https://github.com/textclf/cervantes" class="button"><small>View project on</small> GitHub</a>
+      </div>
+    </header>
+
+    <div id="content-wrapper">
+      <div class="inner clearfix">
+        <section id="main-content">
+          <h1>
+<a id="cervantes-deep-learning-library-for-text-classification" class="anchor" href="#cervantes-deep-learning-library-for-text-classification" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Cervantes: Deep Learning library for text classification</h1>
+
+<h2>
+<a id="status-library-working-but-still-under-heavy-development--refactorization" class="anchor" href="#status-library-working-but-still-under-heavy-development--refactorization" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Status: library working but still under heavy development / refactorization</h2>
+
+<p>Cervantes is a library built over <a href="http://keras.io">Keras</a> that makes the process of using deep learning for text classification and sentiment analysis very easy. It includes basic deep architectures using word vectors, as well as complex models combining CNNs and RNNs over text hierarchies. Furthermore, it is built as a general framework where more advanced users can quickly experiment with new models without having to worry about data preprocessing.</p>
+
+<p>Some of the features offered by Cervantes:</p>
+
+<ul>
+<li>allows creating models based on character and word vectors. </li>
+<li>provides easily configurable data preprocessing and tokenization (using <a href="http://spacy.io">spaCy</a>) so that it is easy to convert a text into an embedding that a neural network can use as input.</li>
+<li>caters for any kind of users. Cervantes offers performant default classifiers that can be trained without any knowledge of Keras or deep learning. However, advanced users can easily create their own Keras models and connect them to the framework.</li>
+<li> allows for complex two-level hierarchical embeddings, computing word-sentence-text or character-word-text representations.</li>
+</ul>
+
+<h2>
+<a id="quick-example" class="anchor" href="#quick-example" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Quick example</h2>
+
+<p>Here is a quick example showing how to train a bidirectional recurrent neural network for text classification:</p>
+
+<div class="highlight highlight-source-python"><pre><span class="pl-k">from</span> cervantes.box <span class="pl-k">import</span> WordVectorBox
+<span class="pl-k">from</span> cervantes.language <span class="pl-k">import</span> OneLevelEmbedding
+<span class="pl-k">from</span> cervantes.nn.models <span class="pl-k">import</span> BiRNNClassifier
+
+<span class="pl-c"># Create and build a word vector container from pre-computed vectors</span>
+vbox <span class="pl-k">=</span> WordVectorBox(<span class="pl-s"><span class="pl-pds">"</span>word_vectors.txt<span class="pl-pds">"</span></span>)
+vbox.build()
+
+<span class="pl-c"># Transform the training texts into a language embedding consisting of word vectors</span>
+lang_embedding <span class="pl-k">=</span> OneLevelEmbedding(vbox, <span class="pl-v">size</span><span class="pl-k">=</span><span class="pl-c1">200</span>)
+lang_embedding.compute_word_repr(train_texts <span class="pl-k">+</span> test_texts)
+lang_embedding.set_labels(train_labels <span class="pl-k">+</span> test_labels)
+
+<span class="pl-c"># Instantiate and train a model using a bidirectional GRU over sequences of word vectors</span>
+clf <span class="pl-k">=</span> BiRNNClassifier(lang_embedding, <span class="pl-v">num_classes</span><span class="pl-k">=</span><span class="pl-c1">2</span>, <span class="pl-v">unit</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">'</span>gru<span class="pl-pds">'</span></span>, 
+                      <span class="pl-v">rnn_size</span><span class="pl-k">=</span><span class="pl-c1">64</span>, <span class="pl-v">train_vectors</span><span class="pl-k">=</span><span class="pl-c1">True</span>)
+clf.train(<span class="pl-v">X</span><span class="pl-k">=</span>lembedding.data[:<span class="pl-c1">len</span>(train_labels)],
+          <span class="pl-v">y</span><span class="pl-k">=</span>lembedding.labels[:<span class="pl-c1">len</span>(train_labels)])</pre></div>
+
+<hr>
+        </section>
+
+        <aside id="sidebar">
+          <a href="https://github.com/textclf/cervantes/zipball/master" class="button">
+            <small>Download</small>
+            .zip file
+          </a>
+          <a href="https://github.com/textclf/cervantes/tarball/master" class="button">
+            <small>Download</small>
+            .tar.gz file
+          </a>
+
+          <p class="repo-owner"><a href="https://github.com/textclf/cervantes"></a> is maintained by <a href="https://github.com/textclf">textclf</a>.</p>
+
+          <p>This page was generated by <a href="https://pages.github.com">GitHub Pages</a> using the Architect theme by <a href="https://twitter.com/jasonlong">Jason Long</a>.</p>
+        </aside>
+      </div>
+    </div>
+
+  
+  </body>
+</html>
